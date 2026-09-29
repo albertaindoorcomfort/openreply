@@ -135,4 +135,73 @@ describe("comment polling does not recreate unsafe sends", () => {
         expect(data.commentId).toBe("new");
     },
   );
+
+  const gateRow = (commentId: string, intentProbability: number | null) => ({
+    commentId,
+    status: "SKIPPED_NO_MATCH",
+    attempts: 0,
+    errorMessage:
+      intentProbability === null
+        ? "Intent gate closed: no usable TypeSafe key is configured"
+        : `Intent gate rejected this comment (p=${intentProbability})`,
+    dmDeliveryUnconfirmed: false,
+    publicReplySentAt: null,
+    publicReplyDeliveryUnconfirmed: false,
+    intentProbability,
+  });
+
+  it("never re-enqueues a comment the intent gate rejected, even with a public reply on", async () => {
+    readComments.mockResolvedValue([
+      {
+        id: "stranger",
+        text: "AI",
+        from: { id: "reader" },
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    mockPrisma.dmLog.findMany.mockResolvedValue([gateRow("stranger", 0.12)]);
+    await reconcileComments();
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it("re-enqueues a comment the gate could not judge, so it is judged once the key exists", async () => {
+    readComments.mockResolvedValue([
+      {
+        id: "stranger",
+        text: "AI",
+        from: { id: "reader" },
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    mockPrisma.dmLog.findMany.mockResolvedValue([gateRow("stranger", null)]);
+    await reconcileComments();
+    expect(queueAdd).toHaveBeenCalledTimes(1);
+    expect(queueAdd.mock.calls[0][1].commentId).toBe("stranger");
+  });
+
+  it("rejected comments do not crowd genuine ones out of a capped sweep", async () => {
+    const cap = 30; // MAX_NEW_PER_SWEEP default
+    const now = Date.now();
+    const rejected = Array.from({ length: cap }, (_, i) => ({
+      id: `rejected-${i}`,
+      text: "AI",
+      from: { id: `reader-${i}` },
+      timestamp: new Date(now - (cap + 10 - i) * 60_000).toISOString(),
+    }));
+    readComments.mockResolvedValue([
+      ...rejected,
+      {
+        id: "genuine",
+        text: "AI",
+        from: { id: "genuine-reader" },
+        timestamp: new Date(now).toISOString(),
+      },
+    ]);
+    mockPrisma.dmLog.findMany.mockResolvedValue(
+      rejected.map((c) => gateRow(c.id, 0.05)),
+    );
+    await reconcileComments();
+    expect(queueAdd).toHaveBeenCalledTimes(1);
+    expect(queueAdd.mock.calls[0][1].commentId).toBe("genuine");
+  });
 });

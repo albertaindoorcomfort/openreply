@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   getEncryptionKeyHex,
   getMetaGraphApiVersion,
+  getTypeSafeApiKey,
   isEmailAllowedToSignIn,
   requireEnv,
 } from "../lib/env";
@@ -28,6 +29,17 @@ describe("environment helpers", () => {
     expect(getMetaGraphApiVersion()).toBe("v25.0");
     vi.stubEnv("META_GRAPH_API_VERSION", "v26.0");
     expect(getMetaGraphApiVersion()).toBe("v26.0");
+  });
+
+  it("treats a missing TypeSafe key as absent, not an error", () => {
+    // Blank it first: a developer machine may have a real key exported, and a
+    // failed assertion would print that key into the test output.
+    vi.stubEnv("TYPESAFE_API_KEY", "");
+    expect(getTypeSafeApiKey()).toBeNull();
+    vi.stubEnv("TYPESAFE_API_KEY", "   ");
+    expect(getTypeSafeApiKey()).toBeNull();
+    vi.stubEnv("TYPESAFE_API_KEY", "ts_live_abc");
+    expect(getTypeSafeApiKey()).toBe("ts_live_abc");
   });
 });
 
