@@ -18,6 +18,7 @@ interface DmLog {
   commentText: string;
   status: string;
   errorMessage: string | null;
+  intentProbability: number | null;
   createdAt: string;
   automation: { name: string; keywords: string[] };
   instagramAccount: { username: string };
@@ -38,6 +39,7 @@ const STATUS_FILTERS = [
   "SKIPPED_RATE_LIMIT",
   "SKIPPED_PLAN_LIMIT",
   "SKIPPED_DEDUP",
+  "SKIPPED_NO_MATCH",
 ];
 
 export default function LogsPage() {
@@ -175,6 +177,13 @@ export default function LogsPage() {
                     </td>
                     <td className="px-4 py-4 max-w-[200px] sm:px-6">
                       <span className="text-muted truncate block">{log.commentText}</span>
+                      {log.intentProbability != null && (
+                        <span className="block text-xs text-muted">
+                          {t("intent {percent}%", {
+                            percent: Math.round(log.intentProbability * 100),
+                          })}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-4 sm:px-6">
                       <span className="text-muted">{log.automation.name}</span>

@@ -53,6 +53,9 @@ interface LoadedCampaign {
   publicReplyMessage: string | null;
   publicReplyMessages: string[];
   isActive: boolean;
+  intentGateEnabled?: boolean;
+  intentDescription?: string | null;
+  intentThreshold?: number | null;
   instagramAccountId: string;
   trackedLinks?: { destinationUrl: string; label?: string | null }[];
 }
@@ -159,6 +162,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [matchMode, setMatchMode] = useState<MatchMode>("specific");
   const [keywordText, setKeywordText] = useState("");
+  const [intentGateEnabled, setIntentGateEnabled] = useState(false);
+  const [intentDescription, setIntentDescription] = useState("");
+  const [intentThreshold, setIntentThreshold] = useState(0.7);
   const [dmTriggerEnabled, setDmTriggerEnabled] = useState(false);
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
@@ -260,6 +266,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setPostUrl(c.postUrl);
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
+        setIntentGateEnabled(c.intentGateEnabled ?? false);
+        setIntentDescription(c.intentDescription ?? "");
+        setIntentThreshold(c.intentThreshold ?? 0.7);
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
@@ -393,6 +402,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       return setError(t("Pick a post or reel to trigger the campaign."));
     if (matchMode === "specific" && keywords.length === 0)
       return setError(t("Add at least one keyword, or switch to any word."));
+    if (intentGateEnabled && !intentDescription.trim())
+      return setError(t("Describe what the campaign offers, or turn off the intent check."));
     if (!dmMessage.trim()) return setError(t("Add the DM with the link."));
     if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError(t("Your opening DM needs a message and a button label."));
@@ -408,6 +419,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       pendingNextReel: triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
+      intentGateEnabled,
+      intentDescription: intentGateEnabled ? intentDescription.trim() : null,
+      intentThreshold,
       dmTriggerEnabled,
       dmMessage,
       openingDmEnabled,
@@ -723,6 +737,55 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           >
             {t("any word")}
           </Radio>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <span className="text-sm text-foreground">
+              {t("only reply when the comment actually asks for it")}
+            </span>
+            <Toggle
+              on={intentGateEnabled}
+              onToggle={() => setIntentGateEnabled(!intentGateEnabled)}
+            />
+          </div>
+          {intentGateEnabled && (
+            <div className="space-y-2">
+              <textarea
+                value={intentDescription}
+                onChange={(e) => setIntentDescription(e.target.value)}
+                rows={2}
+                maxLength={500}
+                aria-label={t("only reply when the comment actually asks for it")}
+                placeholder={t("A free furnace tune-up booking link for Calgary homeowners")}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
+              />
+              <p className="text-xs text-muted">
+                {t(
+                  "Describe what this campaign offers. Before any DM is sent, an AI judgment checks whether the comment actually asks for it. Needs TYPESAFE_API_KEY on the server."
+                )}
+              </p>
+              <details>
+                <summary className="cursor-pointer text-xs text-muted">
+                  {t("Advanced: confidence threshold")}
+                </summary>
+                <div className="mt-2 flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={0.95}
+                    step={0.05}
+                    value={intentThreshold}
+                    onChange={(e) =>
+                      setIntentThreshold(Math.round(Number(e.target.value) * 100) / 100)
+                    }
+                    aria-label={t("Advanced: confidence threshold")}
+                    className="flex-1"
+                  />
+                  <span className="w-12 text-right text-sm text-foreground">
+                    {Math.round(intentThreshold * 100)}%
+                  </span>
+                </div>
+              </details>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
             <span className="text-sm text-foreground">
               {t("also reply when someone DMs")}{" "}

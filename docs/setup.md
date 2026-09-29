@@ -107,6 +107,7 @@ Copy `.env.example` to `.env` for local work, or set these in Vercel and Railway
 | `EMAIL_FROM` | A sender on a domain you verified in Resend. The placeholder will not deliver. |
 | `ALLOWED_EMAILS` | Optional. Comma-separated allowlist of addresses that may sign in, case insensitive. Unset, anyone who reaches your public URL can request a magic link and gets their own workspace, which is worth closing on an instance you run for yourself. |
 | `EMAIL_SERVER` | Optional. An SMTP URL, for example `smtps://login%40example.com:password@mail.example.com:465`. Set it to send magic links through your own mail server instead of Resend; then `RESEND_API_KEY` is not needed. URL-encode special characters in the user and password (`@` becomes `%40`). Port 465 with `smtps://` is implicit TLS, port 587 with `smtp://` is STARTTLS. |
+| `TYPESAFE_API_KEY` | Optional. A [TypeSafe](https://typesafe.ai) API key that turns on the [intent gate](#optional-the-intent-gate). Only the worker needs it. Restart the worker after adding or changing it. Requests are paid. |
 
 **Direct Meta only.** Leave these unset if all accounts use Zernio:
 
@@ -127,6 +128,28 @@ Optional, for tuning the polling reconciler (defaults are fine to start):
 | `COMMENT_POLL_INTERVAL_MS` | `300000` | How often the worker sweeps for missed comments (5 min). |
 | `COMMENT_POLL_MAX_PER_SWEEP` | `30` | Max new comments each campaign acts on per sweep. Keep it conservative; higher gets closer to Instagram's rate limits. |
 | `COMMENT_POLL_LOOKBACK_HOURS` | `72` | How far back a sweep considers comments. |
+
+## Optional: the intent gate
+
+Keyword matching decides which comments a campaign considers. The intent gate adds a second check: does the comment actually ask for what the campaign offers? Say you run a free furnace tune-up reel. With "any word" and no gate, "are you guys hiring?" gets the same DM as "how do I book this?". With "any word" and the gate, the campaign looks at every comment but only answers the people who asked. With keywords and the gate, a keyword like "info" still has to be a real request, not just the word showing up in a chat between friends. Use it when your keywords catch more than they should, or when you want to answer everyone who asked without making them type a magic word.
+
+What leaves your instance: for a gated campaign, OpenReply sends TypeSafe the text of the comment, the commenter's Instagram handle, your offer description, and, if the campaign also replies to DMs, the text of inbound direct messages. Nothing is sent for campaigns that leave the gate off. You are responsible for saying so in your own privacy notice, and for checking it against your obligations under Meta's platform terms and your local privacy law.
+
+To turn it on, open the campaign and find "And this comment has". Switch on "only reply when the comment actually asks for it", then describe your offer in a sentence, for example "a free furnace tune-up booking link for Calgary homeowners". The judgment is only as good as that sentence, so say what you are giving away and to whom. Under "Advanced: confidence threshold" you can set how sure the model must be before a DM goes out. It defaults to 70% and ranges from 50% to 95%. Raise it to send fewer DMs and miss more borderline comments; lower it to send more.
+
+The judgment comes from TypeSafe's Jev model and you pay TypeSafe per request. Get a key at [typesafe.ai](https://typesafe.ai), see [docs.typesafe.ai](https://docs.typesafe.ai) for the model and current pricing, and set `TYPESAFE_API_KEY` on the worker. The gate stays cheap by design. A comment only reaches it after it passes the campaign's keyword check, OpenReply makes one request per comment however many gated campaigns are active on that post, and each verdict is decided once. A comment that was turned away is never judged again, including by the five-minute reconciler sweep. That is one request per comment when the request succeeds. If it fails, OpenReply does not retry inside the request; the job is retried later by the queue, and each retry is another request.
+
+With "any word" and "also reply when someone DMs" both on, every inbound DM to the account is judged, including replies in a conversation that is already going. Expect a request per message. Inbound DMs have no reconciler, so a gated DM that arrives while the gate is closed is not judged later.
+
+Verdicts are final. Each comment is judged once per campaign. Changing the description or the threshold, or turning the gate off, affects new comments only. A comment already turned away is not reconsidered.
+
+By default TypeSafe's SDK uses the latest Jev model, so probabilities can shift when TypeSafe ships a new one. To pin a model, set `TYPESAFE_DEFAULT_MODEL` on the worker to the model name you want; see [docs.typesafe.ai](https://docs.typesafe.ai) for the names.
+
+Without a key, or during a TypeSafe outage, the gate closes rather than breaks. Gated campaigns send nothing, and campaigns that did not turn the gate on keep working as normal. The key is read once when the worker starts, so restart the worker after adding or changing it. Comments that were held back for lack of a key are judged for real once the worker restarts with the key in place, as long as they are still inside the reconciler's lookback window. If a gated campaign is active and no key is set, the worker logs a warning at startup.
+
+If TypeSafe refuses the key, for example because it was revoked or the account is out of credit, the gate closes the same way. DM Logs shows the reason on the affected comments and the worker logs it once. A refused key or account pauses the gate for ten minutes at a time; a single request TypeSafe cannot process closes the gate for that comment only. Those comments are judged once the key works again, as long as they are still inside the lookback window. If you replaced the key, restart the worker so it reads the new one. If you only topped up the account, the worker tries again on its own within ten minutes.
+
+To see what the gate did, open DM Logs. A comment the gate turned away shows as "No match" with an intent percentage under the comment text. Filter by "No match" to review them, and use those numbers to tune the threshold.
 
 ## Connect through Zernio
 
@@ -337,6 +360,9 @@ Work through this order. Ask for decisions or actions only I can supply:
 
 3. Configure shared services and secrets. Set up PostgreSQL, Redis, login email
    delivery, NEXTAUTH_URL, NEXTAUTH_SECRET, CRON_SECRET, and ENCRYPTION_KEY.
+   Ask whether I want the optional intent gate. If so, tell me it is paid per
+   request by TypeSafe and needs TYPESAFE_API_KEY on the worker only; if not,
+   leave it unset.
    Keep ENCRYPTION_KEY identical on web and worker. Run Prisma generation and
    migrations. Never commit credentials or print saved secrets.
 

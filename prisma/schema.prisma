@@ -203,6 +203,12 @@ model Automation {
   publicReplyMessages String[] @default([])
   isActive       Boolean @default(true)
   wholeWordMatch Boolean @default(true)
+  // Intent gate: when on, a comment must also *mean* what the campaign offers
+  // (judged by TypeSafe) before any DM is sent. Off by default, so every
+  // existing campaign behaves exactly as before.
+  intentGateEnabled Boolean @default(false)
+  intentDescription String?
+  intentThreshold   Float   @default(0.7)
   reportShareSlug    String? @unique
   reportShareEnabled Boolean @default(true)
 
@@ -231,6 +237,9 @@ model DmLog {
   commentText   String
   commentId     String
   matchedKeyword String?
+  // Probability the intent gate returned for this comment, when a gate ran.
+  // Null on every keyword-only row, so gated rows are identifiable.
+  intentProbability Float?
   status        DmStatus @default(PENDING)
   attempts      Int      @default(0)
   dmSentAt      DateTime?

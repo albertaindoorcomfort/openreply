@@ -35,6 +35,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 - Keyword to DM. Match one or many keywords per post, whole-word or partial.
 - Optional public reply. Post a visible comment reply on top of the DM.
 - DM and Story reply triggers. The same keywords can also fire on an inbound DM, which covers text replies to your Stories, since Instagram delivers those as DMs. That makes `Reply LINK to this Story` work with no post involved. Turn it on per campaign, and subscribe to the `messages` webhook field if you use your own Meta app. Zernio webhook registration is automatic.
+- Intent gate (optional). Require that a comment actually asks for what you offer before a DM goes out, judged by TypeSafe's Jev model. Needs your own TypeSafe API key. Comment text is sent to TypeSafe for campaigns that turn it on.
 - Tracked links. Swap a link for a tracked redirect and see clicks and CTR per campaign.
 - Two link buttons. Send up to two tappable link buttons in one DM, each a separate tracked link with its own click stats.
 - Follow gate. Optionally require a follow before you hand over the link. The DM asks the commenter to follow and tap a button; on tap, OpenReply checks Meta's `is_user_follow_business` flag and only sends the link once they follow, re-prompting until then. It fails open (sends the link anyway) when Instagram does not return follow status, so a real follower is never trapped.

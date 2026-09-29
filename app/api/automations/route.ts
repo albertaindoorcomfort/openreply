@@ -9,6 +9,11 @@ import {
   buildInitialCampaignLinks,
   syncCampaignLinks,
 } from "@/lib/campaigns/links";
+import {
+  INTENT_DESCRIPTION_REQUIRED,
+  isIntentConfigValid,
+  normalizeIntentThreshold,
+} from "@/lib/campaigns/intent-validation";
 import { buildReportUrl, generateReportShareSlug } from "@/lib/reports/share";
 import {
   canManageWorkspace,
@@ -64,6 +69,9 @@ const createAutomationSchema = z
     secondaryButtonLabel: z.string().max(20).optional().nullable(),
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
+    intentGateEnabled: z.boolean().optional().default(false),
+    intentDescription: z.string().max(500).optional().nullable(),
+    intentThreshold: z.number().transform(normalizeIntentThreshold).pipe(z.number().min(0.5).max(0.95)).optional().default(0.7),
   })
   // A campaign must target a specific post, any post, or the next reel.
   .refine(
@@ -82,7 +90,12 @@ const createAutomationSchema = z
       (Boolean(d.openingDmMessage?.trim()) &&
         Boolean(d.openingDmButtonLabel?.trim())),
     { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
-  );
+  )
+  // The gate has nothing to judge against without a description.
+  .refine(isIntentConfigValid, {
+    message: INTENT_DESCRIPTION_REQUIRED,
+    path: ["intentDescription"],
+  });
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -110,6 +123,9 @@ const updateAutomationSchema = z.object({
   publicReplyMessages: z.array(z.string().max(1000)).max(10).optional(),
   isActive: z.boolean().optional(),
   wholeWordMatch: z.boolean().optional(),
+  intentGateEnabled: z.boolean().optional(),
+  intentDescription: z.string().max(500).optional().nullable(),
+  intentThreshold: z.number().transform(normalizeIntentThreshold).pipe(z.number().min(0.5).max(0.95)).optional(),
   reportShareEnabled: z.boolean().optional(),
   // Empty string clears the tracked link; a URL updates/creates it; undefined
   // leaves it unchanged.
@@ -410,6 +426,11 @@ export async function POST(request: NextRequest) {
         : null,
       isActive: parsed.data.isActive,
       wholeWordMatch: parsed.data.wholeWordMatch,
+      intentGateEnabled: parsed.data.intentGateEnabled,
+      intentDescription: parsed.data.intentGateEnabled
+        ? parsed.data.intentDescription?.trim() || null
+        : null,
+      intentThreshold: parsed.data.intentThreshold,
       workspaceId,
       instagramAccountId: instagramAccount.id,
       reportShareSlug: generateReportShareSlug(),
@@ -500,6 +521,40 @@ export async function PATCH(request: NextRequest) {
   if (automationData.followUpEnabled === false) {
     automationData.followUpMessage = null;
     automationData.followUpDelayMinutes = 0;
+  }
+  // A cleared gate drops its description; a provided one is stored trimmed.
+  if (automationData.intentGateEnabled === false) {
+    automationData.intentDescription = null;
+  }
+  if (typeof automationData.intentDescription === "string") {
+    automationData.intentDescription =
+      automationData.intentDescription.trim() || null;
+  }
+  // The update is partial, so the stored row decides for any field the request
+  // leaves out. Validate the effective gate state, not just what was sent.
+  const effectiveIntent = {
+    intentGateEnabled: automationData.intentGateEnabled ?? existing.intentGateEnabled,
+    intentDescription:
+      automationData.intentDescription !== undefined
+        ? automationData.intentDescription
+        : existing.intentDescription,
+  };
+  if (
+    (automationData.intentGateEnabled !== undefined ||
+      automationData.intentDescription !== undefined) &&
+    !isIntentConfigValid(effectiveIntent)
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Invalid input",
+        details: {
+          formErrors: [],
+          fieldErrors: { intentDescription: [INTENT_DESCRIPTION_REQUIRED] },
+        },
+      },
+      { status: 400 }
+    );
   }
   // Any-post / next-reel campaigns carry no specific post.
   if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {
