@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { Prisma } from "@/app/generated/prisma/client";
 import { LeadError, notFound, versionConflict } from "./errors";
 import { ensureDefaultPipeline } from "./pipeline";
+import { normalizeIdentity } from "./normalize";
 import { recordEvent, type Actor } from "./timeline";
 
 // ── Contacts ────────────────────────────────────────────────────────────────
@@ -318,20 +319,43 @@ export async function updateOpportunity(actor: Actor, opportunityId: string, inp
 
 export const ExternalTimelineSchema = z
   .object({
-    type: z.string().regex(/^(meeting|call|voicemail|calendar)\.[a-z_]{1,40}$/),
+    type: z.string().regex(/^(meeting|call|voicemail|calendar|sms)\.[a-z_]{1,40}$/),
     contactId: z.string().max(100).optional(),
     conversationId: z.string().max(100).optional(),
     opportunityId: z.string().max(100).optional(),
+    /** Resolve the contact by identity when the caller has no contact id. Never creates one. */
+    contact: z
+      .object({ identities: z.array(z.object({ kind: z.enum(["EMAIL", "PHONE", "INSTAGRAM", "MESSENGER", "WEB_VISITOR", "EXTERNAL"]), value: z.string().min(1).max(320) }).strict()).min(1).max(10) })
+      .strict()
+      .optional(),
     occurredAt: z.coerce.date().optional(),
     payload: z.record(z.string(), z.unknown()).optional(),
     idempotencyKey: z.string().min(1).max(200).optional(),
+    /** Alias of idempotencyKey: the provider's own event id. */
+    externalId: z.string().min(1).max(200).optional(),
   })
   .strict()
-  .refine((v) => v.contactId || v.conversationId || v.opportunityId, "link at least one record");
+  .refine((v) => v.contactId || v.conversationId || v.opportunityId || v.contact, "link at least one record");
 
 export async function writeExternalEvent(actor: Actor, input: z.input<typeof ExternalTimelineSchema>) {
-  const data = ExternalTimelineSchema.parse(input);
+  const { contact, externalId, ...data } = ExternalTimelineSchema.parse(input);
+  data.idempotencyKey ??= externalId;
   if (JSON.stringify(data.payload ?? {}).length > 20_000) throw new LeadError("PAYLOAD_TOO_LARGE", 413);
+  if (!data.contactId && !data.conversationId && !data.opportunityId && contact) {
+    const pairs = contact.identities
+      .map((i) => ({ kind: i.kind, value: normalizeIdentity(i.kind, i.value) }))
+      .filter((i): i is { kind: typeof i.kind; value: string } => i.value !== null);
+    const match = pairs.length
+      ? await prisma.contactIdentity.findFirst({ where: { workspaceId: actor.workspaceId, OR: pairs }, orderBy: { createdAt: "asc" } })
+      : null;
+    if (!match) throw new LeadError("CONTACT_NOT_FOUND", 404, "No contact has these identities. Post the interaction to /events to create the lead.");
+    data.contactId = match.contactId;
+    let mergedInto = (await prisma.contact.findUnique({ where: { id: data.contactId }, select: { mergedIntoId: true } }))?.mergedIntoId;
+    while (mergedInto) {
+      data.contactId = mergedInto;
+      mergedInto = (await prisma.contact.findUnique({ where: { id: mergedInto }, select: { mergedIntoId: true } }))?.mergedIntoId;
+    }
+  }
   await assertLinks(actor, data);
   if (data.idempotencyKey) {
     const existing = await prisma.timelineEvent.findUnique({

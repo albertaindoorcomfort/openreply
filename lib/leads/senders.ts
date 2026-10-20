@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/db/client";
 import type { Channel } from "@/app/generated/prisma/client";
@@ -95,7 +96,49 @@ const smtpEmailSender: ChannelSender = {
   },
 };
 
+/**
+ * SMS through the voice service (RingCentral). Signed like Apollo's module
+ * calls (contracts.md section 3), with the draft id as the idempotency key so
+ * a retry can never text the customer twice.
+ */
+const voiceServiceSmsSender: ChannelSender = {
+  async unavailableReason({ contactId }) {
+    if (!process.env.VOICE_SERVICE_URL || !process.env.RELAY_DELIVERY_SECRET) return "SMS_NOT_CONNECTED";
+    const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { primaryPhone: true } });
+    return contact?.primaryPhone ? null : "NO_PHONE_NUMBER";
+  },
+  async send(req) {
+    const contact = await prisma.contact.findUnique({ where: { id: req.contactId }, select: { primaryPhone: true } });
+    if (!contact?.primaryPhone) return { status: "rejected", error: "NO_PHONE_NUMBER" };
+    const body = JSON.stringify({
+      workspaceId: req.workspaceId,
+      from: req.channelAccountRef,
+      to: contact.primaryPhone,
+      text: req.body,
+      conversationRef: `aic:conversation:${req.conversationId}`,
+      draftId: req.idempotencyKey,
+    });
+    const ts = Math.floor(Date.now() / 1000).toString();
+    const sig = createHmac("sha256", process.env.RELAY_DELIVERY_SECRET!).update(`${ts}.${body}`).digest("hex");
+    try {
+      const res = await fetch(`${process.env.VOICE_SERVICE_URL!.replace(/\/$/, "")}/aic/deliver/sms`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-aic-timestamp": ts, "x-aic-signature": `v1=${sig}`, "idempotency-key": req.idempotencyKey },
+        body,
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = (await res.json().catch(() => ({}))) as { messageId?: string; error?: string; result?: { messageId?: string } };
+      if (res.ok) return { status: "sent", externalMessageId: data.messageId ?? data.result?.messageId ?? null };
+      if (res.status >= 400 && res.status < 500) return { status: "rejected", error: data.error ?? `HTTP_${res.status}` };
+      return { status: "unconfirmed", error: data.error ?? `HTTP_${res.status}` };
+    } catch (err) {
+      return { status: "unconfirmed", error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+};
+
 const senders: Partial<Record<Channel, ChannelSender>> = {
+  SMS: voiceServiceSmsSender,
   INSTAGRAM: instagramSender,
   EMAIL: smtpEmailSender,
   WEB_FORM: smtpEmailSender,
