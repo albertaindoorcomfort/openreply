@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
   api,
@@ -21,6 +21,7 @@ import {
   useNow,
   type ContactRef,
   type Task,
+  usePolling,
 } from "@/components/leads/shared";
 import { TaskRow } from "@/components/leads/task-pieces";
 
@@ -59,11 +60,7 @@ export default function TodayPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const timer = window.setInterval(() => void load(), POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [load]);
+  usePolling(load, POLL_MS);
 
   const tiles = data
     ? [
@@ -148,7 +145,7 @@ export default function TodayPage() {
                     <li key={lead.id}>
                       <Link href={`/leads/contacts/${lead.id}`} className="flex items-center gap-2 py-2 hover:bg-surface-hover">
                         <span className="min-w-0 flex-1 truncate text-sm text-foreground">{lead.displayName}</span>
-                        {lead.source && <span className="text-xs text-muted">{lead.source}</span>}
+                        {lead.source && <ChannelBadge channel={lead.source} />}
                         {lead.leadScore != null && (
                           <span className="text-xs text-muted">{t("Score {score}", { score: lead.leadScore })}</span>
                         )}

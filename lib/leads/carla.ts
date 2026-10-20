@@ -279,7 +279,7 @@ export async function runCarla(workspaceId: string, conversationId: string, brai
     let tasksCreated = 0;
     for (const na of output.nextActions) {
       if (na.action === "reply" || na.action === "handoff" || na.action === "close") continue;
-      const exists = await tx.task.count({ where: { conversationId, status: "OPEN", title: na.label, deletedAt: null } });
+      const exists = await tx.task.count({ where: { contactId: conversation.contactId, status: "OPEN", title: na.label, deletedAt: null } });
       if (exists) continue;
       const task = await tx.task.create({
         data: {

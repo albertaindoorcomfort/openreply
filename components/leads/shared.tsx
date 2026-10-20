@@ -202,6 +202,12 @@ const INTENT: Record<string, StaticMessageKey> = {
   spam: "Spam",
 };
 
+const SENTIMENT: Record<string, StaticMessageKey> = {
+  positive: "Positive",
+  neutral: "Neutral",
+  negative: "Negative",
+};
+
 export const INTENTS = Object.keys(INTENT);
 export const URGENCIES = ["LOW", "NORMAL", "HIGH", "EMERGENCY"] as const;
 export const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"] as const;
@@ -221,6 +227,7 @@ export function useLeadLabels() {
     level: (c: string) => pick(LEVEL, c),
     mode: (c: string) => pick(MODE, c),
     intent: (c: string) => pick(INTENT, c),
+    sentiment: (c: string) => pick(SENTIMENT, c),
   };
 }
 
@@ -260,6 +267,21 @@ export function useNow(intervalMs = 30_000): number {
     return () => window.clearInterval(timer);
   }, [intervalMs]);
   return now;
+}
+
+/**
+ * Runs `load` now and then every `intervalMs` (no repeat when null). The first
+ * run is scheduled, not called inline, so the effect only subscribes.
+ */
+export function usePolling(load: () => Promise<void> | void, intervalMs: number | null) {
+  useEffect(() => {
+    const first = window.setTimeout(() => void load(), 0);
+    const timer = intervalMs ? window.setInterval(() => void load(), intervalMs) : undefined;
+    return () => {
+      window.clearTimeout(first);
+      if (timer) window.clearInterval(timer);
+    };
+  }, [load, intervalMs]);
 }
 
 /** Workspace members for assign pickers. Empty until loaded. */
