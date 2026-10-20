@@ -129,7 +129,10 @@ const voiceServiceSmsSender: ChannelSender = {
       });
       const data = (await res.json().catch(() => ({}))) as { messageId?: string; error?: string; result?: { messageId?: string } };
       if (res.ok) return { status: "sent", externalMessageId: data.messageId ?? data.result?.messageId ?? null };
-      if (res.status >= 400 && res.status < 500) return { status: "rejected", error: data.error ?? `HTTP_${res.status}` };
+      // 409 means an earlier attempt with this draft id is still unresolved, not a refusal.
+      if (res.status >= 400 && res.status < 500 && res.status !== 409 && res.status !== 429) {
+        return { status: "rejected", error: data.error ?? `HTTP_${res.status}` };
+      }
       return { status: "unconfirmed", error: data.error ?? `HTTP_${res.status}` };
     } catch (err) {
       return { status: "unconfirmed", error: err instanceof Error ? err.message : String(err) };
