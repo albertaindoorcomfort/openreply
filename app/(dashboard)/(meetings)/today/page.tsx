@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
+import { readAttendees } from "@/lib/meetings/events";
 import { formatDay, startOfLocalDay } from "@/lib/meetings/time";
 import ConnectionBanner from "../_components/connection-banner";
 import MeetingRow from "../_components/meeting-row";
@@ -17,7 +18,7 @@ export default async function TodayPage() {
   const dayStart = startOfLocalDay(now, timezone);
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
 
-  const [today, needsFollowUp, upcoming] = await Promise.all([
+  const [today, recent, upcoming] = await Promise.all([
     prisma.meeting.findMany({
       where: { workspaceId: ctx.workspaceId, deletedAt: null, startsAt: { gte: dayStart, lt: dayEnd }, status: { not: "CANCELLED" } },
       include: { _count: { select: { briefs: true } } },
@@ -41,6 +42,9 @@ export default async function TodayPage() {
       take: 15,
     }),
   ]);
+
+  // Internal meetings need a summary but no customer follow-up.
+  const needsFollowUp = recent.filter((m) => !m._count.summaries || readAttendees(m.attendees).some((a) => !a.internal));
 
   return (
     <div>
