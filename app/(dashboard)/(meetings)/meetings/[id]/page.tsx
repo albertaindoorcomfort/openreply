@@ -98,8 +98,8 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                   <p className="mt-2 whitespace-pre-wrap">{n.body}</p>
                 </details>
               ) : (
-                <div key={n.id} className="mb-3 border-b border-border pb-3">
-                  <ActionForm action={editNoteAction} submitLabel="Save" variant="secondary">
+                <div key={n.id} className="mb-3 flex flex-wrap items-start gap-2 border-b border-border pb-3">
+                  <ActionForm action={editNoteAction} submitLabel="Save" variant="secondary" className="min-w-0 flex-1 basis-full">
                     <input type="hidden" name="noteId" value={n.id} />
                     <input type="hidden" name="version" value={n.version} />
                     <textarea name="body" defaultValue={n.body} rows={Math.min(12, n.body.split("\n").length + 1)} aria-label="Note" className={field} />
