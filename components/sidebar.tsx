@@ -14,9 +14,13 @@ import { zernioLink } from "@/lib/zernio-links";
 import { usePathname } from "next/navigation";
 
 const navItems = [
+  { label: "Today", href: "/today" },
   { label: "Dashboard", href: "/dashboard" },
   { label: "Overview", href: "/overview" },
   { label: "Inbox", href: "/inbox" },
+  { label: "Calendar", href: "/calendar" },
+  { label: "Meetings", href: "/meetings" },
+  { label: "Notes", href: "/notes" },
   { label: "Campaigns", href: "/campaigns" },
   { label: "DM Logs", href: "/logs" },
   { label: "Settings", href: "/settings" },

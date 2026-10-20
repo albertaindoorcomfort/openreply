@@ -11,6 +11,17 @@ jobs:
     name: TypeScript checks
     runs-on: ubuntu-latest
 
+    # Runs the *.db.test.ts suites, which skip themselves without a database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +48,8 @@ jobs:
 
       - name: Run tests
         run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       - name: Build
         run: npm run build
