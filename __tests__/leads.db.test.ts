@@ -320,6 +320,17 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
     expect(sent).toHaveLength(2);
   });
 
+  it("withdraws drafts on the person's other channels once one reply goes out", async () => {
+    const mail = await ingestInbound(A, email({}, "two-channels@example.com"));
+    const form = await ingestInbound(A, { ...email({}, "two-channels@example.com"), channel: "WEB_FORM", externalThreadId: "form:two", externalMessageId: "form:two" });
+    expect(form.contactId).toBe(mail.contactId);
+    const formDraft = await draftFor(form.conversationId);
+    await sendAsUser(USER_A, mail.conversationId, { body: "Answered by email", idempotencyKey: randomUUID(), basedOnMessageId: mail.messageId });
+    expect((await state.db.draft.findUniqueOrThrow({ where: { id: formDraft.id } })).status).toBe("STALE");
+    expect(await code(sendDraftWithGrant(SERVICE_A, formDraft.id, grantFor(formDraft)))).toBe("DRAFT_STALE");
+    expect(sent).toHaveLength(1);
+  });
+
   it("refuses a send while someone else holds the compose lock", async () => {
     const lead = await ingestInbound(A, email({}, "lock@example.com"));
     expect((await acquireLock(USER_A, lead.conversationId)).held).toBe(true);

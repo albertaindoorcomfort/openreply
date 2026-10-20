@@ -66,6 +66,9 @@ const instagramSender: ChannelSender = {
  * Outlook (Microsoft Graph) sender is connected. Configured by
  * LEADS_EMAIL_SERVER and LEADS_EMAIL_FROM.
  */
+/** The sender's own domain, so replies thread and spam filters see a matching Message-ID. */
+const messageIdDomain = (from: string) => /@([A-Za-z0-9.-]+)/.exec(from)?.[1] ?? "localhost";
+
 const smtpEmailSender: ChannelSender = {
   async unavailableReason({ contactId }) {
     if (!process.env.LEADS_EMAIL_SERVER || !process.env.LEADS_EMAIL_FROM) return "EMAIL_NOT_CONNECTED";
@@ -83,7 +86,7 @@ const smtpEmailSender: ChannelSender = {
         to: contact.primaryEmail,
         subject,
         text: req.body,
-        messageId: `<${req.idempotencyKey}@relay.local>`,
+        messageId: `<${req.idempotencyKey}@${messageIdDomain(process.env.LEADS_EMAIL_FROM!)}>`,
         ...(req.inReplyTo ? { inReplyTo: req.inReplyTo, references: [req.inReplyTo] } : {}),
       });
       return { status: "sent", externalMessageId: info.messageId ?? null };

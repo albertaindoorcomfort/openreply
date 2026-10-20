@@ -196,8 +196,12 @@ async function executeSend(actor: Actor, draftId: string, release: Release, now 
         where: { id: conversation.id },
         data: { lastOutboundAt: message.occurredAt, unreadCount: 0, version: { increment: 1 } },
       });
-      // Anything else proposed against the old state no longer fits.
-      await tx.draft.updateMany({ where: { conversationId: conversation.id, status: "PROPOSED" }, data: { status: "STALE" } });
+      // Anything else proposed for this person, on any channel, was written
+      // before this reply and would answer them twice.
+      await tx.draft.updateMany({
+        where: { status: "PROPOSED", conversation: { contactId: conversation.contactId } },
+        data: { status: "STALE" },
+      });
       await recordEvent(tx, actor, {
         type: "message.sent", contactId: conversation.contactId, conversationId: conversation.id,
         payload: { draftId: draft.id, messageId: message.id, authorKind: draft.authorKind, approvalId: release.approvalId },
