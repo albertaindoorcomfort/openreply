@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
+import { bridgeInstagramDm } from '@/lib/leads/instagram-bridge';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
 type InstagramPayload = Parameters<typeof parseCommentEvents>[0];
@@ -99,6 +100,14 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of messageEvents) {
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
+
+      await bridgeInstagramDm({
+        workspaceId: account.workspaceId,
+        instagramAccountId: event.instagramAccountId,
+        senderId: event.senderId,
+        messageId: event.messageId,
+        text: event.messageText,
+      });
 
       await queue.add(
         MESSAGE_JOB_NAME,
