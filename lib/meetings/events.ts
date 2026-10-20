@@ -4,7 +4,8 @@ export type Actor = { kind: "USER" | "AGENT" | "SYSTEM"; id: string | null };
 export const SYSTEM: Actor = { kind: "SYSTEM", id: "meetings" };
 export const CARLA: Actor = { kind: "AGENT", id: "carla" };
 
-type RelayType = "meeting.scheduled" | "meeting.rescheduled" | "meeting.completed" | "meeting.notes_linked";
+/** Timeline event types, plus "feedback" for corrections forwarded to POST /feedback. */
+type RelayType = "meeting.scheduled" | "meeting.rescheduled" | "meeting.completed" | "meeting.notes_linked" | "feedback";
 
 /**
  * Appends to the meeting's history in the caller's transaction. A relayType

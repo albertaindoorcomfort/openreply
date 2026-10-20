@@ -3,7 +3,7 @@
  * GraphClient HTTP code runs) and for Relay's adapter API.
  */
 import type { GraphEvent } from "../../lib/microsoft/graph";
-import type { RelayApi, RelayContact, RelayContactProfile, TaskInput, TimelineInput } from "../../lib/meetings/relay-client";
+import type { FeedbackInput, RelayApi, RelayContact, RelayContactProfile, TaskInput, TimelineInput } from "../../lib/meetings/relay-client";
 
 type Busy = { email: string; start: string; end: string; status?: string };
 
@@ -165,6 +165,7 @@ export class FakeRelay implements RelayApi {
   tasks: (TaskInput & { id: string })[] = [];
   drafts: { conversationId: string; body: string; idempotencyKey: string; id: string }[] = [];
   failTimeline = 0;
+  feedback: FeedbackInput[] = [];
 
   addContact(c: Partial<RelayContactProfile> & { id: string; primaryEmail: string }) {
     this.contacts.set(c.id, { conversations: [], tasks: [], opportunities: [], ...c } as RelayContactProfile);
@@ -189,6 +190,10 @@ export class FakeRelay implements RelayApi {
     const t = { ...task, id: `task${this.tasks.length + 1}` };
     this.tasks.push(t);
     return { id: t.id };
+  }
+  async postFeedback(f: FeedbackInput) {
+    if (!this.feedback.some((x) => x.idempotencyKey === f.idempotencyKey)) this.feedback.push(f);
+    return { feedbackId: `fb${this.feedback.length}` };
   }
   async createDraft(conversationId: string, draft: { body: string; idempotencyKey: string }) {
     const d = { conversationId, body: draft.body, idempotencyKey: draft.idempotencyKey, id: `rdraft${this.drafts.length + 1}` };

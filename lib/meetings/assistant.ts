@@ -367,7 +367,7 @@ export async function correctSummary(
       corrected,
       reason: input.reason,
       status: "NEW",
-    });
+    }, "feedback");
     return s;
   });
 }

@@ -449,6 +449,11 @@ describe.skipIf(!DATABASE_URL)("meetings on a real Postgres", () => {
       ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
       const feedback = await state.db.meetingEvent.findFirstOrThrow({ where: { meetingId: meeting.id, type: "feedback.recorded" } });
       expect(feedback.payload).toMatchObject({ targetKind: "MEETING_NOTE", targetId: summary.id, original: { producer: "heuristic" }, corrected: { summary: "Replace the furnace." } });
+      // The correction is forwarded to Relay's feedback queue once, with the person as corrector.
+      await state.db.meetingEvent.updateMany({ where: { NOT: { id: feedback.id } }, data: { relayPushedAt: new Date() } });
+      await pushTimelineOutbox(relay);
+      await pushTimelineOutbox(relay);
+      expect(relay.feedback).toMatchObject([{ targetKind: "MEETING_NOTE", targetId: summary.id, correctedBy: "user_a", contactId: "c1", idempotencyKey: feedback.id }]);
 
       // No email conversation in Relay: an Outlook draft, never a send.
       const f = await prepareFollowUp(ws, meeting.id, user, deps());

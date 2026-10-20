@@ -65,12 +65,24 @@ export interface TaskInput {
   idempotencyKey: string;
 }
 
+export interface FeedbackInput {
+  targetKind: "MEETING_NOTE";
+  targetId: string;
+  original: unknown;
+  corrected: unknown;
+  reason: string | null;
+  contactId: string | null;
+  correctedBy: string;
+  idempotencyKey: string;
+}
+
 export interface RelayApi {
   findContactsByEmail(email: string): Promise<RelayContact[]>;
   getContact(id: string): Promise<RelayContactProfile | null>;
   postTimeline(event: TimelineInput): Promise<void>;
   createTask(task: TaskInput): Promise<{ id: string }>;
   createDraft(conversationId: string, draft: { body: string; rationale: string; evidence: unknown[]; idempotencyKey: string }): Promise<{ id: string }>;
+  postFeedback(feedback: FeedbackInput): Promise<{ feedbackId: string }>;
 }
 
 export class RelayClient implements RelayApi {
@@ -130,9 +142,18 @@ export class RelayClient implements RelayApi {
   async createDraft(conversationId: string, draft: { body: string; rationale: string; evidence: unknown[]; idempotencyKey: string }) {
     const r = await this.call<{ draft?: { id: string }; id?: string }>(
       `/conversations/${encodeURIComponent(conversationId)}/drafts`,
-      { method: "POST", headers: { "idempotency-key": draft.idempotencyKey }, body: JSON.stringify(draft) }
+      { method: "POST", headers: { "idempotency-key": draft.idempotencyKey, "x-agent-id": "meetings" }, body: JSON.stringify(draft) }
     );
     return { id: r.draft?.id ?? r.id ?? "" };
+  }
+
+  async postFeedback({ idempotencyKey, ...feedback }: FeedbackInput) {
+    const r = await this.call<{ feedbackId: string }>("/feedback", {
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: JSON.stringify(feedback),
+    });
+    return { feedbackId: r.feedbackId };
   }
 }
 

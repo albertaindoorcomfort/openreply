@@ -82,7 +82,9 @@ default); typed notes are kept.
   failures back off and retry; after 8 attempts a notification is dead and a
   full delta sync reconciles. Lifecycle events renew, recreate or resync.
 - **Corrections are feedback.** A corrected summary supersedes Carla's and is
-  recorded with the original for evaluation. Nothing changes Carla's prompts.
+  recorded with the original, then forwarded to the lead inbox feedback queue
+  (`POST /feedback`, `feedback:write` scope) for evaluation. Nothing changes
+  Carla's prompts.
 - **Follow-ups are drafts.** With an email conversation for the lead, the
   follow-up becomes a draft in the inbox (sent only after approval). Without
   one it is saved to the organizer's Outlook Drafts.

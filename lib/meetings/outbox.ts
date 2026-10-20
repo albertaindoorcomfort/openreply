@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/db/client";
-import type { RelayApi, TimelineInput } from "./relay-client";
+import type { FeedbackInput, RelayApi, TimelineInput } from "./relay-client";
 
 const MAX_ATTEMPTS = 10;
 
 /**
- * Pushes queued meeting.* events to the Relay timeline. An event waits until
+ * Pushes queued meeting.* events to the Relay timeline, and summary
+ * corrections to Relay's feedback queue. A timeline event waits until
  * its meeting is linked to a contact or opportunity. The event id is the
  * idempotency key, which Relay dedupes per workspace, so a retry after a lost
  * response cannot write the entry twice.
@@ -12,10 +13,16 @@ const MAX_ATTEMPTS = 10;
 export async function pushTimelineOutbox(relay: RelayApi, limit = 100) {
   const rows = await prisma.meetingEvent.findMany({
     where: {
-      relayType: { not: null },
       relayPushedAt: null,
       relayAttempts: { lt: MAX_ATTEMPTS },
-      meeting: { OR: [{ contactId: { not: null } }, { opportunityId: { not: null } }] },
+      OR: [
+        // Corrections go to POST /feedback whether or not the meeting is linked.
+        { relayType: "feedback" },
+        {
+          relayType: { not: null },
+          meeting: { OR: [{ contactId: { not: null } }, { opportunityId: { not: null } }] },
+        },
+      ],
     },
     include: { meeting: true },
     orderBy: { occurredAt: "asc" },
@@ -25,6 +32,23 @@ export async function pushTimelineOutbox(relay: RelayApi, limit = 100) {
   for (const row of rows) {
     const m = row.meeting;
     try {
+      if (row.relayType === "feedback") {
+        const p = row.payload as { targetId: string; original: unknown; corrected: unknown; reason: string | null };
+        const feedback: FeedbackInput = {
+          targetKind: "MEETING_NOTE",
+          targetId: p.targetId,
+          original: p.original,
+          corrected: p.corrected,
+          reason: p.reason,
+          contactId: m.contactId,
+          correctedBy: row.actorId ?? "",
+          idempotencyKey: row.id,
+        };
+        await relay.postFeedback(feedback);
+        await prisma.meetingEvent.update({ where: { id: row.id }, data: { relayPushedAt: new Date(), relayError: null } });
+        stats.pushed++;
+        continue;
+      }
       await relay.postTimeline({
         type: row.relayType as TimelineInput["type"],
         idempotencyKey: row.id,
