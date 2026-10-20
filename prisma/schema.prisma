@@ -734,10 +734,13 @@ model Feedback {
   userId         String
   conversationId String?
   status         FeedbackStatus @default(NEW)
+  // Set when another module forwards a correction, so a retry stores it once.
+  idempotencyKey String?
   createdAt      DateTime       @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([targetKind, targetId])
 }

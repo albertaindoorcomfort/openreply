@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import type { Prisma } from "@/app/generated/prisma/client";
-import { notFound } from "./errors";
+import { LeadError, notFound } from "./errors";
 import { recordEvent, type Actor } from "./timeline";
 
 export const AssessmentCorrectionSchema = z
@@ -32,9 +32,29 @@ export const FeedbackSchema = z.discriminatedUnion("targetKind", [
  * inbox shows the corrected view. Nothing here changes Carla's instructions:
  * corrections feed her context and the evaluation set only.
  */
-export async function recordFeedback(actor: Actor & { id: string }, input: z.input<typeof FeedbackSchema>) {
+export async function recordFeedback(
+  actor: Actor,
+  input: z.input<typeof FeedbackSchema>,
+  opts: { correctedBy?: string; idempotencyKey?: string; contactId?: string } = {},
+) {
   const f = FeedbackSchema.parse(input);
+  // A person always owns a correction: the signed-in user, or the one a module names.
+  const userId = opts.correctedBy ?? (actor.kind === "USER" ? actor.id : null);
+  if (!userId) throw new LeadError("CORRECTED_BY_REQUIRED", 400, "A correction must name the person who made it.");
+  const idempotencyKey = opts.idempotencyKey ?? null;
   return prisma.$transaction(async (tx) => {
+    if (idempotencyKey) {
+      const existing = await tx.feedback.findUnique({ where: { workspaceId_idempotencyKey: { workspaceId: actor.workspaceId, idempotencyKey } } });
+      if (existing) return existing;
+    }
+    if (opts.correctedBy) {
+      const member = await tx.workspaceMember.count({ where: { workspaceId: actor.workspaceId, userId: opts.correctedBy } });
+      if (!member) throw notFound("Member");
+    }
+    if (opts.contactId) {
+      const c = await tx.contact.count({ where: { id: opts.contactId, workspaceId: actor.workspaceId } });
+      if (!c) throw notFound("Contact");
+    }
     if (f.targetKind === "ASSESSMENT") {
       const original = await tx.assessment.findFirst({ where: { id: f.targetId, workspaceId: actor.workspaceId } });
       if (!original) throw notFound("Assessment");
@@ -42,7 +62,7 @@ export async function recordFeedback(actor: Actor & { id: string }, input: z.inp
         data: {
           workspaceId: actor.workspaceId, targetKind: "ASSESSMENT", targetId: original.id, conversationId: original.conversationId,
           original: { intent: original.intent, urgency: original.urgency, sentiment: original.sentiment, leadScore: original.leadScore, summary: original.summary },
-          corrected: f.corrected, reason: f.reason, userId: actor.id,
+          corrected: f.corrected, reason: f.reason, userId, idempotencyKey,
         },
       });
       await tx.assessment.updateMany({ where: { conversationId: original.conversationId, supersededAt: null }, data: { supersededAt: new Date() } });
@@ -52,7 +72,7 @@ export async function recordFeedback(actor: Actor & { id: string }, input: z.inp
           intent: f.corrected.intent ?? original.intent, urgency: f.corrected.urgency ?? original.urgency,
           sentiment: f.corrected.sentiment ?? original.sentiment, leadScore: f.corrected.leadScore ?? original.leadScore,
           summary: f.corrected.summary ?? original.summary, nextActions: original.nextActions as Prisma.InputJsonValue,
-          evidence: original.evidence as Prisma.InputJsonValue, producer: `human:${actor.id}`, confidence: 1,
+          evidence: original.evidence as Prisma.InputJsonValue, producer: `human:${userId}`, confidence: 1,
         },
       });
       if (f.corrected.leadScore !== undefined) {
@@ -68,10 +88,10 @@ export async function recordFeedback(actor: Actor & { id: string }, input: z.inp
     const fb = await tx.feedback.create({
       data: {
         workspaceId: actor.workspaceId, targetKind: f.targetKind, targetId: f.targetId, conversationId: f.conversationId,
-        original: f.original as Prisma.InputJsonValue | undefined, corrected: f.corrected as Prisma.InputJsonValue, reason: f.reason, userId: actor.id,
+        original: f.original as Prisma.InputJsonValue | undefined, corrected: f.corrected as Prisma.InputJsonValue, reason: f.reason, userId, idempotencyKey,
       },
     });
-    await recordEvent(tx, actor, { type: "feedback.recorded", conversationId: f.conversationId, payload: { feedbackId: fb.id, targetKind: f.targetKind } });
+    await recordEvent(tx, actor, { type: "feedback.recorded", contactId: opts.contactId, conversationId: f.conversationId, payload: { feedbackId: fb.id, targetKind: f.targetKind } });
     return fb;
   });
 }

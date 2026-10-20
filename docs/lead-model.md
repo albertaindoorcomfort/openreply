@@ -58,7 +58,8 @@ Base path `/api/relay/v1`. Agent calls (`assist:write`) may name the agent in `x
 | `GET /contacts?q=`, `GET /contacts/:id` | `inbox:read` | Lookup and full profile (identities, consent, conversations, tasks, opportunities, latest assessment). |
 | `GET /conversations?status=&mode=`, `GET /conversations/:id` | `inbox:read` | Inbox and thread with messages. |
 | `POST /conversations/:id/assist` | `assist:write` | Run Carla now: classification, summary, next actions, tasks, draft. |
-| `POST /conversations/:id/drafts` | `assist:write` | Carla's proposed reply. Never sends. |
+| `POST /conversations/:id/drafts` | `assist:write` | Carla's proposed reply. Never sends. An `idempotency-key` header (8 to 100 of `A-Za-z0-9_:.-`) makes a retry return the first draft. |
+| `POST /feedback` | `feedback:write` | Forwards a person's correction: `{targetKind, targetId, corrected, original?, reason?, conversationId?, contactId?, correctedBy}`. `targetKind` is `ASSESSMENT`, `DRAFT`, `RECOMMENDATION`, `SUMMARY`, `ROUTING` or `MEETING_NOTE`; `correctedBy` must be a member of the key's workspace. An `idempotency-key` header stores a retry once. Returns `{feedbackId, status}`. Feedback never changes Carla's instructions. |
 | `POST /drafts/:id/send` | `messages:send` | Sends one approved draft. Needs a send grant (below). |
 | `POST /conversations/:id/handoff` | `assist:write` | Carla asks for a human: sets mode `HUMAN`, raises a task. |
 | `POST /tasks`, `PATCH /tasks/:id` | `tasks:write` | Tasks and reminders. |

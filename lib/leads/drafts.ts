@@ -34,13 +34,29 @@ async function lockConversation(tx: Tx, conversationId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${"conversation|" + conversationId}, 0))`;
 }
 
-/** Carla (or a person) proposes a reply. Never sends. */
-export async function proposeDraft(actor: Actor, conversationId: string, input: z.input<typeof ProposeDraftSchema>) {
+export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_:.-]{8,100}$/);
+
+/**
+ * Carla (or a person) proposes a reply. Never sends. With an idempotency key a
+ * retried proposal returns the first draft instead of replacing it.
+ */
+export async function proposeDraft(actor: Actor, conversationId: string, input: z.input<typeof ProposeDraftSchema>, idempotencyKey?: string) {
   const data = ProposeDraftSchema.parse(input);
+  // Proposal keys share the unique column with human send keys, so they get their own prefix.
+  const key = idempotencyKey === undefined ? null : `propose:${IdempotencyKeySchema.parse(idempotencyKey)}`;
   return prisma.$transaction(async (tx) => {
     await lockConversation(tx, conversationId);
     const conversation = await tx.conversation.findFirst({ where: { id: conversationId, workspaceId: actor.workspaceId } });
     if (!conversation) throw notFound("Conversation");
+    if (key) {
+      const existing = await tx.draft.findUnique({ where: { idempotencyKey: key } });
+      if (existing) {
+        if (existing.workspaceId !== actor.workspaceId || existing.conversationId !== conversationId) {
+          throw new LeadError("IDEMPOTENCY_KEY_REUSED", 409);
+        }
+        return existing;
+      }
+    }
     if (actor.kind === "AGENT" && (conversation.mode === "HUMAN" || conversation.mode === "MANUAL_ONLY")) {
       throw new LeadError("CARLA_PAUSED", 409, "A person has taken over this conversation.");
     }
@@ -63,6 +79,7 @@ export async function proposeDraft(actor: Actor, conversationId: string, input: 
         confidence: data.confidence,
         externalTaskId: data.externalTaskId,
         basedOnMessageId: basedOn?.id ?? null,
+        idempotencyKey: key,
       },
     });
     await recordEvent(tx, actor, {

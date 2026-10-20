@@ -307,6 +307,7 @@ CREATE TABLE "Feedback" (
     "userId" TEXT NOT NULL,
     "conversationId" TEXT,
     "status" "FeedbackStatus" NOT NULL DEFAULT 'NEW',
+    "idempotencyKey" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Feedback_pkey" PRIMARY KEY ("id")
@@ -438,6 +439,9 @@ CREATE INDEX "Feedback_workspaceId_status_idx" ON "Feedback"("workspaceId", "sta
 
 -- CreateIndex
 CREATE INDEX "Feedback_targetKind_targetId_idx" ON "Feedback"("targetKind", "targetId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Feedback_workspaceId_idempotencyKey_key" ON "Feedback"("workspaceId", "idempotencyKey");
 
 -- CreateIndex
 CREATE INDEX "DuplicateCandidate_workspaceId_status_idx" ON "DuplicateCandidate"("workspaceId", "status");

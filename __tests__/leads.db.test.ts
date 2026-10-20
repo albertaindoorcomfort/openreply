@@ -64,6 +64,9 @@ import { POST as sendPOST } from "../app/api/relay/v1/drafts/[id]/send/route";
 import { GET as conversationGET } from "../app/api/relay/v1/conversations/[id]/route";
 import { POST as formPOST } from "../app/api/forms/[key]/route";
 import { POST as actionsPOST } from "../app/api/leads/conversations/[id]/actions/route";
+import { POST as feedbackPOST } from "../app/api/relay/v1/feedback/route";
+import { POST as draftsPOST } from "../app/api/relay/v1/conversations/[id]/drafts/route";
+import { getContactProfile } from "../lib/leads/records";
 
 const SECRET = "test-grant-secret-0123456789abcdefghij";
 const schema = `leads_${randomBytes(4).toString("hex")}`;
@@ -407,6 +410,34 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
     const current = await state.db.assessment.findFirstOrThrow({ where: { conversationId: lead.conversationId, supersededAt: null } });
     expect(current).toMatchObject({ urgency: "LOW", leadScore: 90, producer: "human:user_a" });
     expect(await state.db.feedback.count({ where: { targetId: r.assessmentId, status: "NEW" } })).toBe(1);
+  });
+
+  it("takes forwarded corrections and retried proposals from other modules once", async () => {
+    const lead = await ingestInbound(A, email({}, "meetings@example.com"));
+    await runCarla("ws_a", lead.conversationId, rulesBrain);
+    const fbKey = await mintApiKey("ws_a", "meetings", ["feedback:write"]);
+    const auth = { authorization: `Bearer ${fbKey.secret}`, "idempotency-key": "meeting-note-1-fix" };
+    const note = { targetKind: "MEETING_NOTE", targetId: "note_1", contactId: lead.contactId, original: { text: "AC" }, corrected: { text: "Heat pump" }, correctedBy: "user_a2" };
+    const first = await feedbackPOST(req("POST", "http://localhost/api/relay/v1/feedback", note, auth), undefined as never);
+    const again = await feedbackPOST(req("POST", "http://localhost/api/relay/v1/feedback", note, auth), undefined as never);
+    expect(first.status).toBe(201);
+    expect((await again.json()).feedbackId).toBe((await first.json()).feedbackId);
+    expect(await state.db.feedback.count({ where: { targetId: "note_1", userId: "user_a2" } })).toBe(1);
+    const stranger = await feedbackPOST(req("POST", "http://localhost/api/relay/v1/feedback", { ...note, correctedBy: "user_b" }, { authorization: auth.authorization }), undefined as never);
+    expect(stranger.status).toBe(404);
+
+    const assistKey = await mintApiKey("ws_a", "meetings-assist", ["assist:write"]);
+    const propose = () => draftsPOST(
+      req("POST", `http://localhost/api/relay/v1/conversations/${lead.conversationId}/drafts`, { body: "Following up on our visit." }, { authorization: `Bearer ${assistKey.secret}`, "x-agent-id": "meetings", "idempotency-key": "followup-visit-1" }),
+      { params: Promise.resolve({ id: lead.conversationId }) },
+    );
+    const d1 = await (await propose()).json();
+    const d2 = await (await propose()).json();
+    expect(d2.draftId).toBe(d1.draftId);
+    expect(await state.db.draft.count({ where: { conversationId: lead.conversationId, authorId: "meetings" } })).toBe(1);
+
+    const profile = await getContactProfile(A, lead.contactId);
+    expect(profile.latestAssessment?.conversationId).toBe(lead.conversationId);
   });
 
   // ── Records, history and isolation ───────────────────────────────────────

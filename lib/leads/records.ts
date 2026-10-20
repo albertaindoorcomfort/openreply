@@ -43,13 +43,15 @@ export async function getContactProfile(actor: Actor, contactId: string) {
     },
   });
   if (!contact) throw notFound("Contact");
-  const [timeline, duplicates] = await Promise.all([
+  const [timeline, duplicates, latestAssessment] = await Promise.all([
     prisma.timelineEvent.findMany({ where: { workspaceId: actor.workspaceId, contactId }, orderBy: { seq: "desc" }, take: 200 }),
     prisma.duplicateCandidate.findMany({
       where: { workspaceId: actor.workspaceId, status: "OPEN", OR: [{ contactId }, { otherContactId: contactId }] },
     }),
+    // The current view across all of the contact's conversations.
+    prisma.assessment.findFirst({ where: { workspaceId: actor.workspaceId, contactId, supersededAt: null }, orderBy: { createdAt: "desc" } }),
   ]);
-  return { ...contact, timeline: timeline.map((e) => ({ ...e, seq: e.seq.toString() })), duplicates };
+  return { ...contact, timeline: timeline.map((e) => ({ ...e, seq: e.seq.toString() })), duplicates, latestAssessment };
 }
 
 export const ContactPatchSchema = z

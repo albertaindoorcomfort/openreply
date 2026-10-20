@@ -9,6 +9,7 @@ export const SCOPES = [
   "tasks:write",
   "messages:send",
   "forms:submit",
+  "feedback:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
