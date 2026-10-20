@@ -4,7 +4,9 @@ import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  // A folder, so each module keeps its models in its own file
+  // (schema.prisma, meetings.prisma) and branches do not collide.
+  schema: "prisma",
   migrations: {
     path: "prisma/migrations",
   },
