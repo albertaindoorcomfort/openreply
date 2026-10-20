@@ -49,7 +49,7 @@ Meetings (owned by the Meetings thread) link with `contactId`, `opportunityId` a
 
 ## Adapter API (service keys)
 
-Base path `/api/relay/v1`. Auth: `Authorization: Bearer orly_<prefix>_<secret>`, a workspace-scoped key with scopes. Keys are minted with `npm run relay:key -- --workspace <id> --name <name> --scopes ...`.
+Base path `/api/relay/v1`. Agent calls (`assist:write`) may name the agent in `x-agent-id` (default `carla`). Auth: `Authorization: Bearer orly_<prefix>_<secret>`, a workspace-scoped key with scopes. Keys are minted with `npm run relay:key -- --workspace <id> --name <name> --scopes ...`.
 
 | Method and path | Scope | Purpose |
 |---|---|---|
@@ -57,7 +57,7 @@ Base path `/api/relay/v1`. Auth: `Authorization: Bearer orly_<prefix>_<secret>`,
 | `POST /timeline` | `timeline:write` | Write a `meeting.*`, `call.*` or `voicemail.*` event linked to a contact or opportunity. |
 | `GET /contacts?q=`, `GET /contacts/:id` | `inbox:read` | Lookup and full profile (identities, consent, conversations, tasks, opportunities, latest assessment). |
 | `GET /conversations?status=&mode=`, `GET /conversations/:id` | `inbox:read` | Inbox and thread with messages. |
-| `POST /conversations/:id/assessments` | `assist:write` | Carla's classification, summary and next actions. |
+| `POST /conversations/:id/assist` | `assist:write` | Run Carla now: classification, summary, next actions, tasks, draft. |
 | `POST /conversations/:id/drafts` | `assist:write` | Carla's proposed reply. Never sends. |
 | `POST /drafts/:id/send` | `messages:send` | Sends one approved draft. Needs a send grant (below). |
 | `POST /conversations/:id/handoff` | `assist:write` | Carla asks for a human: sets mode `HUMAN`, raises a task. |
@@ -97,3 +97,15 @@ Humans sending from the inbox UI use their session, a client-generated `idempote
 - **Resume** sets mode back to `SUPERVISED`.
 - **Compose lock**: opening the composer takes a 2-minute lock (`lockUserId`, `lockExpiresAt`), renewed while typing. Another person sees who is replying; a send by someone without the lock is refused with `409 LOCKED`.
 - **Coaching**: a `COACHING` message is internal, attached to the conversation, and is included in Carla's next drafting context. It is never sent.
+
+## Website forms
+
+`POST /api/forms/<form key>` accepts JSON or a plain HTML form post: `name` (or `firstName`, `lastName`), `email`, `phone`, `company`, `message`, `subject`, `consent` (`on` when a marketing opt-in box is ticked), `page`, `utm_source`, `utm_medium`, `utm_campaign`, `campaign_ref`, `submission_id`, and a hidden honeypot field `website` that must stay empty. A form key holds only `forms:submit`, so it is safe in page source. 10 posts per IP per minute. `?redirect=` is honoured only for hosts in `LEADS_FORM_REDIRECT_HOSTS`.
+
+## Staff API (signed-in users)
+
+`/api/leads/*` serves the inbox UI with the same rules: `today`, `conversations` (+ `/:id`, `/:id/actions` for takeover, resume, lock, assign, note, coach, assist, close, `/:id/send`), `drafts/:id` (discard), `contacts` (+ merge, restore, consent), `duplicates/:id`, `board`, `opportunities/:id`, `tasks`, `feedback`, `knowledge`, `members`. Writes require a same-origin request.
+
+## Status of v1 (2026-10-20)
+
+Built and tested in openreply#2: everything above, plus the website form, Instagram DM bridge, SMTP email sender and the voice-service SMS sender. Outlook mail sending comes from the Meetings thread (`registerSender("EMAIL", …)`).
