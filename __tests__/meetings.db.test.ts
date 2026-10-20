@@ -207,6 +207,11 @@ describe.skipIf(!DATABASE_URL)("meetings on a real Postgres", () => {
       expect(moved.status).toBe("rescheduled");
       if (moved.status !== "rescheduled") return;
 
+      // Apollo retrying the same move after a timeout gets success, not a conflict.
+      const retry = await rescheduleMeeting({ workspaceId: ws, meetingId: r.meeting.id, start: new Date(MON_10), expectedVersion: r.meeting.version }, human, deps());
+      expect(retry.status).toBe("rescheduled");
+      expect(graph.count("PATCH", /^\/me\/events\//)).toBe(1);
+
       // A stale version from another tab is refused before anything reaches Outlook.
       await expect(
         rescheduleMeeting({ workspaceId: ws, meetingId: r.meeting.id, start: new Date(MON_9), expectedVersion: r.meeting.version }, human, deps())

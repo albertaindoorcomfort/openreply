@@ -95,16 +95,16 @@ default); typed notes are kept.
 5-minute window, `idempotency-key`). Tenants map to workspaces through
 `AIC_TENANT_WORKSPACES`.
 
-| Tool | Does | Suggested permission |
+| Tool | Does | Apollo permission |
 |---|---|---|
-| `meetings.check_availability` | Free/busy and alternatives | read |
-| `meetings.upcoming` | Upcoming meetings for a mailbox | read |
-| `meetings.book` | Books after a fresh availability check | `comms:send` (external attendees) |
-| `meetings.reschedule` | Moves with If-Match | `comms:send` (external attendees) |
-| `meetings.brief` | Prep brief with evidence | internal |
-| `meetings.summarize` | Summary, decisions, action items | internal |
-| `meetings.create_action_tasks` | Lead tasks with reminders | internal |
-| `meetings.prepare_follow_up` | Inbox or Outlook draft, never a send | internal |
+| `meetings.check_availability` | Free/busy and alternatives | `calendar:read` |
+| `meetings.upcoming` | Upcoming meetings for a mailbox | `calendar:read` |
+| `meetings.book` | Books after a fresh availability check | `calendar:write`, always approved |
+| `meetings.reschedule` | Moves with If-Match; a retried move returns success | `calendar:write`, always approved |
+| `meetings.brief` | Prep brief with evidence | `meeting:read` |
+| `meetings.summarize` | Summary, decisions, action items | `meeting:write` |
+| `meetings.create_action_tasks` | Lead tasks with reminders | `workflow:create` |
+| `meetings.prepare_follow_up` | Inbox or Outlook draft, never a send | `comms:draft` |
 
 ## Tests
 

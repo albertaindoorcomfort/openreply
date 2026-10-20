@@ -276,6 +276,11 @@ export type RescheduleResult =
 export async function rescheduleMeeting(input: RescheduleInput, auth: Authorization, deps: SchedulingDeps): Promise<RescheduleResult> {
   const meeting = await prisma.meeting.findFirst({ where: { id: input.meetingId, workspaceId: input.workspaceId, deletedAt: null } });
   if (!meeting || !meeting.graphEventId) throw new SchedulingError("NOT_FOUND");
+  const duration = input.durationMinutes ?? Math.round((meeting.endsAt.getTime() - meeting.startsAt.getTime()) / 60_000);
+  // A retry of a move that already happened (Apollo retries after a timeout) is a success, not a conflict.
+  const alreadyThere = (m: Meeting) =>
+    m.startsAt.getTime() === input.start.getTime() && m.endsAt.getTime() === input.start.getTime() + duration * 60_000;
+  if (alreadyThere(meeting)) return { status: "rescheduled", meeting };
   if (meeting.version !== input.expectedVersion) throw new SchedulingError("VERSION_CONFLICT");
   const connection = await prisma.microsoftConnection.findUniqueOrThrow({ where: { id: meeting.connectionId } });
   if (meeting.organizerEmail && meeting.organizerEmail !== connection.email) {
@@ -284,7 +289,6 @@ export async function rescheduleMeeting(input: RescheduleInput, auth: Authorizat
   const attendees = readAttendees(meeting.attendees);
   requireApprovalIfExternal(attendees, connection.email, auth);
 
-  const duration = input.durationMinutes ?? Math.round((meeting.endsAt.getTime() - meeting.startsAt.getTime()) / 60_000);
   const availability = await checkAvailability(
     { connectionId: connection.id, workspaceId: input.workspaceId, start: input.start, durationMinutes: duration, attendees: attendees.map((a) => a.email), excludeMeetingId: meeting.id },
     deps
@@ -319,7 +323,9 @@ export async function rescheduleMeeting(input: RescheduleInput, auth: Authorizat
       // Someone changed it in Outlook. Pull their version and let the person decide again.
       const fresh = await deps.graph.getEvent(meeting.graphEventId);
       await applyGraphEvent(connection, fresh, deps.relay);
-      return { status: "changed_in_outlook", meeting: await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } }) };
+      const current = await prisma.meeting.findUniqueOrThrow({ where: { id: meeting.id } });
+      // Our own earlier attempt may be the change: then the move is done.
+      return alreadyThere(current) ? { status: "rescheduled", meeting: current } : { status: "changed_in_outlook", meeting: current };
     }
     throw error;
   }
