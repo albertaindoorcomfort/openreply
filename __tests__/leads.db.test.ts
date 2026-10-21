@@ -67,6 +67,8 @@ import { POST as actionsPOST } from "../app/api/leads/conversations/[id]/actions
 import { POST as feedbackPOST } from "../app/api/relay/v1/feedback/route";
 import { POST as draftsPOST } from "../app/api/relay/v1/conversations/[id]/drafts/route";
 import { getContactProfile } from "../lib/leads/records";
+import { outlookEmailSender } from "../lib/leads/outlook-sender";
+import { GraphError, type GraphClient } from "../lib/microsoft/graph";
 
 const SECRET = "test-grant-secret-0123456789abcdefghij";
 const schema = `leads_${randomBytes(4).toString("hex")}`;
@@ -438,6 +440,48 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
 
     const profile = await getContactProfile(A, lead.contactId);
     expect(profile.latestAssessment?.conversationId).toBe(lead.conversationId);
+  });
+
+  it("sends approved email from the connected Outlook mailbox and reports what Graph did", async () => {
+    await sql.query(`
+      INSERT INTO "MicrosoftConnection" ("id", "workspaceId", "userId", "msTenantId", "msUserId", "email", "grantedScopes", "accessTokenEnc", "accessExpiresAt", "refreshTokenEnc", "updatedAt")
+      VALUES ('mc1', 'ws_a', 'user_a', 't', 'u', 'service@aic.test', ARRAY['Mail.Send'], 'x', now(), 'x', now())
+    `);
+    const lead = await ingestInbound(A, email({}, "outlook@example.com"));
+    const inbound = await state.db.message.findFirstOrThrow({ where: { conversationId: lead.conversationId } });
+    const calls: string[] = [];
+    let sendError: unknown = null;
+    const graph = {
+      async request(path: string, init: RequestInit = {}) {
+        calls.push(`${init.method ?? "GET"} ${path.split("?")[0]}`);
+        if (path.startsWith("/me/messages?")) return { value: [{ id: "orig1" }] };
+        if (path.endsWith("/createReply")) return { id: "draft1", internetMessageId: "<draft1@aic.test>" };
+        return {};
+      },
+      async sendDraft(id: string) {
+        calls.push(`SEND ${id}`);
+        if (sendError) throw sendError;
+        return {};
+      },
+    } as unknown as GraphClient;
+    const sender = outlookEmailSender(() => graph);
+    const req = {
+      workspaceId: "ws_a", channel: "EMAIL" as const, channelAccountRef: "service@aic.test", conversationId: lead.conversationId,
+      contactId: lead.contactId, subject: "Furnace", body: "We can come Tuesday.", inReplyTo: inbound.externalMessageId, idempotencyKey: "d1",
+    };
+
+    expect(await sender.unavailableReason(req)).toBeNull();
+    expect(await sender.unavailableReason({ ...req, channelAccountRef: "other@aic.test" })).toBe("OUTLOOK_NOT_CONNECTED");
+    expect(await sender.send(req)).toEqual({ status: "sent", externalMessageId: "<draft1@aic.test>" });
+    expect(calls).toEqual(["GET /me/messages", "POST /me/messages/orig1/createReply", "SEND draft1"]);
+
+    sendError = new GraphError(403, "ErrorAccessDenied", "/me/messages/…/send");
+    calls.length = 0;
+    expect((await sender.send(req)).status).toBe("rejected");
+    expect(calls).toContain("DELETE /me/messages/draft1");
+
+    sendError = new GraphError(504, "GatewayTimeout", "/me/messages/…/send");
+    expect((await sender.send(req)).status).toBe("unconfirmed");
   });
 
   // ── Records, history and isolation ───────────────────────────────────────
