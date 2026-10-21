@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/client";
 import type { Channel } from "@/app/generated/prisma/client";
 import { createInstagramContext, sendDirectMessage } from "@/lib/instagram/provider";
 import { classifySendError, isDeliveryUnconfirmed } from "@/lib/instagram/delivery-errors";
+import { hasOutlookMailbox, outlookEmailSender } from "./outlook-sender";
 
 export interface OutboundRequest {
   workspaceId: string;
@@ -62,9 +63,8 @@ const instagramSender: ChannelSender = {
 };
 
 /**
- * Email over SMTP, for replies to website forms and email leads until the
- * Outlook (Microsoft Graph) sender is connected. Configured by
- * LEADS_EMAIL_SERVER and LEADS_EMAIL_FROM.
+ * Email over SMTP, for workspaces without a connected Outlook mailbox.
+ * Configured by LEADS_EMAIL_SERVER and LEADS_EMAIL_FROM.
  */
 /** The sender's own domain, so replies thread and spam filters see a matching Message-ID. */
 const messageIdDomain = (from: string) => /@([A-Za-z0-9.-]+)/.exec(from)?.[1] ?? "localhost";
@@ -143,11 +143,24 @@ const voiceServiceSmsSender: ChannelSender = {
   },
 };
 
+const outlookSender = outlookEmailSender();
+
+/** Outlook when the conversation's mailbox is connected, SMTP otherwise. */
+const emailSender: ChannelSender = {
+  async unavailableReason(req) {
+    if (await hasOutlookMailbox(req.workspaceId, req.channelAccountRef)) return outlookSender.unavailableReason(req);
+    return smtpEmailSender.unavailableReason(req);
+  },
+  async send(req) {
+    return (await hasOutlookMailbox(req.workspaceId, req.channelAccountRef)) ? outlookSender.send(req) : smtpEmailSender.send(req);
+  },
+};
+
 const senders: Partial<Record<Channel, ChannelSender>> = {
   SMS: voiceServiceSmsSender,
   INSTAGRAM: instagramSender,
-  EMAIL: smtpEmailSender,
-  WEB_FORM: smtpEmailSender,
+  EMAIL: emailSender,
+  WEB_FORM: emailSender,
 };
 
 /** Other channel adapters (Outlook, RingCentral SMS) register here at startup. */
