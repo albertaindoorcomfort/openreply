@@ -7,7 +7,7 @@ export default function MeetingsWorkspaceLayout({ children }: { children: React.
       <Shortcuts />
       {children}
       <p className="mt-10 text-xs text-muted">
-        Keys: <kbd>t</kbd> Today · <kbd>c</kbd> Calendar · <kbd>m</kbd> Meetings · <kbd>n</kbd> Notes · <kbd>i</kbd> Inbox · <kbd>/</kbd> Search ·{" "}
+        Keys: <kbd>t</kbd> Today · <kbd>a</kbd> Agenda · <kbd>c</kbd> Calendar · <kbd>m</kbd> Meetings · <kbd>n</kbd> Notes · <kbd>i</kbd> Inbox · <kbd>/</kbd> Search ·{" "}
         <Link href="/meetings/connect" className="underline">
           Microsoft 365
         </Link>

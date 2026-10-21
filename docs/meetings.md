@@ -1,6 +1,6 @@
 # Meetings and Outlook calendar
 
-Carla's meeting workspace: **Today**, **Calendar**, **Meetings** and **Notes**,
+Carla's meeting workspace: **Agenda**, **Calendar**, **Meetings** and **Notes**,
 on top of Microsoft 365 through Microsoft Graph. It books and moves Outlook
 meetings after checking free/busy, prepares briefs, keeps consented notes,
 summarizes, turns action items into lead tasks, and prepares follow-up drafts.

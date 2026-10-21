@@ -15,9 +15,13 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { label: "Today", href: "/today" },
+  { label: "Leads", href: "/leads" },
+  { label: "Pipeline", href: "/leads/pipeline" },
+  { label: "Tasks", href: "/leads/tasks" },
   { label: "Dashboard", href: "/dashboard" },
   { label: "Overview", href: "/overview" },
   { label: "Inbox", href: "/inbox" },
+  { label: "Agenda", href: "/agenda" },
   { label: "Calendar", href: "/calendar" },
   { label: "Meetings", href: "/meetings" },
   { label: "Notes", href: "/notes" },
@@ -40,6 +44,10 @@ export default function Sidebar({
 }: SidebarProps) {
   const { t } = useI18n();
   const pathname = usePathname();
+  // The longest matching href wins, so /leads/tasks does not also light up /leads.
+  const activeHref = navItems
+    .filter((item) => pathname === item.href || pathname.startsWith(item.href + "/"))
+    .reduce<string | null>((best, item) => (!best || item.href.length > best.length ? item.href : best), null);
 
   return (
     <>
@@ -72,8 +80,7 @@ export default function Sidebar({
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+            const isActive = item.href === activeHref;
             return (
               <Link
                 key={item.href}

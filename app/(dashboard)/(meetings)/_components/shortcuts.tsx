@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-const ROUTES: Record<string, string> = { t: "/today", c: "/calendar", m: "/meetings", n: "/notes", i: "/inbox" };
+const ROUTES: Record<string, string> = { t: "/today", a: "/agenda", c: "/calendar", m: "/meetings", n: "/notes", i: "/inbox" };
 
 /**
- * Single-key navigation (t, c, m, n, i) and "/" to focus search, ignored
+ * Single-key navigation (t, a, c, m, n, i) and "/" to focus search, ignored
  * while typing in a field so it never steals keystrokes.
  */
 export default function Shortcuts() {

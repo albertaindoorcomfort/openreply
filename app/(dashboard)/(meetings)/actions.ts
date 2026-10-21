@@ -118,7 +118,7 @@ export async function bookAction(_: ActionResult, form: FormData): Promise<Actio
       depsFor(connection.id)
     );
     revalidatePath("/calendar");
-    revalidatePath("/today");
+    revalidatePath("/agenda");
     if (r.status === "booked") {
       return { ok: true, message: `${r.duplicate ? "Already booked" : "Booked"}: ${formatDay(r.meeting.startsAt, connection.timezone)} at ${formatTime(r.meeting.startsAt, connection.timezone)}.` };
     }

@@ -11,7 +11,8 @@ jobs:
     name: TypeScript checks
     runs-on: ubuntu-latest
 
-    # Runs the *.db.test.ts suites, which skip themselves without a database.
+    # The *.db.test.ts suites need a real Postgres (locks, unique indexes,
+    # concurrency). They build their own throwaway schema from the migrations.
     services:
       postgres:
         image: postgres:16
