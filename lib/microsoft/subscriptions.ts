@@ -5,9 +5,10 @@ import { markNeedsReauth } from "./connection";
 import { GraphError, type GraphClient } from "./graph";
 
 /**
- * Graph change-notification subscriptions for a mailbox's calendar.
+ * Graph change-notification subscriptions: a mailbox's calendar, and the
+ * Inbox of the service mailbox that feeds the lead inbox.
  *
- * Outlook event subscriptions may live up to 10,080 minutes. We ask for three
+ * Outlook event and message subscriptions may live up to 10,080 minutes. We ask for three
  * days and renew anything inside 24 hours of expiry on every cron run, so a
  * missed run or two never lets one lapse. Lifecycle notifications
  * (reauthorizationRequired, subscriptionRemoved, missed) arrive at a separate
@@ -27,23 +28,35 @@ export function clientStateMatches(received: string | undefined, storedHash: str
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export async function createCalendarSubscription(connectionId: string, graph: GraphClient, now = new Date()) {
+export const MAIL_RESOURCE = "me/mailFolders('inbox')/messages";
+
+const KINDS = {
+  calendar: { resource: CALENDAR_RESOURCE, changeType: "created,updated,deleted", immutableIds: false },
+  mail: { resource: MAIL_RESOURCE, changeType: "created", immutableIds: true },
+} as const;
+export type SubscriptionKind = keyof typeof KINDS;
+
+export const subscriptionKind = (resource: string): SubscriptionKind => (resource === MAIL_RESOURCE ? "mail" : "calendar");
+
+export async function createSubscription(connectionId: string, graph: GraphClient, kind: SubscriptionKind, now = new Date()) {
   const connection = await prisma.microsoftConnection.findUniqueOrThrow({ where: { id: connectionId } });
+  const { resource, changeType, immutableIds } = KINDS[kind];
   const clientState = randomBytes(32).toString("base64url");
   const sub = await graph.createSubscription({
-    resource: CALENDAR_RESOURCE,
-    changeType: "created,updated,deleted",
+    resource,
+    changeType,
     ...graphNotificationUrls(),
     clientState,
     expiresAt: new Date(now.getTime() + LIFETIME_MS),
+    immutableIds,
   });
   return prisma.graphSubscription.create({
     data: {
       workspaceId: connection.workspaceId,
       connectionId,
       graphSubscriptionId: sub.id,
-      resource: CALENDAR_RESOURCE,
-      changeType: "created,updated,deleted",
+      resource,
+      changeType,
       clientStateHash: hashClientState(clientState),
       expiresAt: new Date(sub.expirationDateTime),
       lastRenewedAt: now,
@@ -51,13 +64,19 @@ export async function createCalendarSubscription(connectionId: string, graph: Gr
   });
 }
 
-/** Creates the calendar subscription if the connection has no live one. */
-export async function ensureCalendarSubscription(connectionId: string, graph: GraphClient, now = new Date()) {
+/** Creates the subscription if the connection has no live one of that kind. */
+export async function ensureSubscription(connectionId: string, graph: GraphClient, kind: SubscriptionKind, now = new Date()) {
   const live = await prisma.graphSubscription.findFirst({
-    where: { connectionId, resource: CALENDAR_RESOURCE, status: { in: ["ACTIVE", "RENEW_FAILED"] }, expiresAt: { gt: now } },
+    where: { connectionId, resource: KINDS[kind].resource, status: { in: ["ACTIVE", "RENEW_FAILED"] }, expiresAt: { gt: now } },
   });
-  return live ?? createCalendarSubscription(connectionId, graph, now);
+  return live ?? createSubscription(connectionId, graph, kind, now);
 }
+
+export const createCalendarSubscription = (connectionId: string, graph: GraphClient, now = new Date()) =>
+  createSubscription(connectionId, graph, "calendar", now);
+
+export const ensureCalendarSubscription = (connectionId: string, graph: GraphClient, now = new Date()) =>
+  ensureSubscription(connectionId, graph, "calendar", now);
 
 export type RenewOutcome = "renewed" | "recreated" | "needs_reauth" | "failed";
 
@@ -66,7 +85,7 @@ export async function renewSubscription(subscriptionRowId: string, graph: GraphC
   const row = await prisma.graphSubscription.findUniqueOrThrow({ where: { id: subscriptionRowId } });
   const replace = async () => {
     await prisma.graphSubscription.update({ where: { id: row.id }, data: { status: "REMOVED" } });
-    await createCalendarSubscription(row.connectionId, graph, now);
+    await createSubscription(row.connectionId, graph, subscriptionKind(row.resource), now);
     return "recreated" as const;
   };
 

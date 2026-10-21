@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import { getGraphClientForConnection } from "@/lib/microsoft/connection";
+import { retryFailedMail, startMailIngest, syncInbox } from "@/lib/microsoft/mail";
 import { processPendingNotifications } from "@/lib/microsoft/notifications";
 import { ensureCalendarSubscription, renewSubscription, subscriptionsDueForRenewal } from "@/lib/microsoft/subscriptions";
 import { modelFromEnv } from "./model";
@@ -16,8 +17,8 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message.slice(0, 200) 
 
 /**
  * The periodic job: keep subscriptions alive, retry failed notifications,
- * reconcile calendars, close out ended meetings, push timeline events and
- * apply retention. Each step is independent, so one failing does not stop
+ * reconcile calendars and the service mailbox's Inbox, close out ended
+ * meetings, push timeline events and apply retention. Each step is independent, so one failing does not stop
  * the others.
  */
 export async function runMeetingsMaintenance(now = new Date()) {
@@ -49,6 +50,22 @@ export async function runMeetingsMaintenance(now = new Date()) {
     }
   }
   report.syncs = syncs;
+
+  const mail: Record<string, unknown> = {};
+  for (const c of connections) {
+    const graph = getGraphClientForConnection(c.id);
+    try {
+      if (await startMailIngest(c.id, graph, now)) mail[c.id] = await syncInbox(c.id, { graph, relay, now: () => now });
+    } catch (e) {
+      mail[c.id] = errorText(e);
+    }
+  }
+  report.mail = mail;
+  try {
+    report.mailRetries = await retryFailedMail(getGraphClientForConnection, relay, now);
+  } catch (e) {
+    report.mailRetries = errorText(e);
+  }
 
   report.completed = await completeEndedMeetings(now);
   report.timeline = relay ? await pushTimelineOutbox(relay) : "relay not configured";
