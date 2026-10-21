@@ -82,6 +82,34 @@ export interface ScheduleItem {
   end: Date;
 }
 
+export interface GraphRecipient {
+  emailAddress?: { address?: string; name?: string };
+}
+
+export interface GraphMessage {
+  id: string;
+  "@removed"?: { reason: string };
+  internetMessageId?: string;
+  conversationId?: string;
+  subject?: string;
+  receivedDateTime?: string;
+  from?: GraphRecipient;
+  sender?: GraphRecipient;
+  isDraft?: boolean;
+  hasAttachments?: boolean;
+  uniqueBody?: { contentType?: string; content?: string };
+  body?: { contentType?: string; content?: string };
+}
+
+export interface GraphAttachmentMeta {
+  id: string;
+  name?: string;
+  contentType?: string;
+  size?: number;
+  isInline?: boolean;
+  "@odata.type"?: string;
+}
+
 export interface GraphSubscriptionResponse {
   id: string;
   expirationDateTime: string;
@@ -101,6 +129,8 @@ export function parseGraphDate(value: GraphDateTime | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+const MAIL_PREFER = 'outlook.timezone="UTC", outlook.body-content-type="text", IdType="ImmutableId"';
+
 const utc = (d: Date): GraphDateTime => ({ dateTime: d.toISOString().replace(/Z$/, ""), timeZone: "UTC" });
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -111,7 +141,7 @@ export class GraphClient {
     private readonly wait: (ms: number) => Promise<void> = sleep
   ) {}
 
-  async request<T>(path: string, init: RequestInit & { raw?: boolean } = {}): Promise<T> {
+  async request<T>(path: string, init: RequestInit & { raw?: boolean | "bytes" } = {}): Promise<T> {
     const url = path.startsWith("https://") ? path : `${GRAPH}${path}`;
     if (!url.startsWith(`${GRAPH}/`)) throw new GraphError(0, "bad_url", "external");
     const label = new URL(url).pathname.replace(/\/[A-Za-z0-9_=-]{40,}/g, "/…");
@@ -139,6 +169,7 @@ export class GraphClient {
         const json = (await res.json().catch(() => ({}))) as { error?: { code?: string } };
         throw new GraphError(res.status, json.error?.code ?? "unknown", label);
       }
+      if (init.raw === "bytes") return { bytes: await res.arrayBuffer(), contentType: res.headers.get("content-type") } as T;
       if (init.raw) return (await res.text()) as T;
       if (res.status === 202 || res.status === 204) return {} as T;
       const text = await res.text();
@@ -273,6 +304,55 @@ export class GraphClient {
     ).then((r) => r.value);
   }
 
+  static readonly MESSAGE_FIELDS =
+    "id,internetMessageId,conversationId,subject,receivedDateTime,from,sender,isDraft,hasAttachments,uniqueBody,body";
+
+  /**
+   * One message with plain-text bodies. Mail requests ask for immutable ids,
+   * so an id stays valid when someone files the message into another folder.
+   */
+  getMessage(id: string) {
+    return this.request<GraphMessage>(`/me/messages/${encodeURIComponent(id)}?$select=${GraphClient.MESSAGE_FIELDS}`, {
+      headers: { Prefer: MAIL_PREFER },
+    });
+  }
+
+  /** One page of an Inbox delta round. Pass the start URL or a next/delta link. */
+  inboxDeltaPage(link: string) {
+    return this.request<{ value: GraphMessage[]; "@odata.nextLink"?: string; "@odata.deltaLink"?: string }>(link, {
+      headers: { Prefer: `${MAIL_PREFER}, odata.maxpagesize=50` },
+    });
+  }
+
+  /** New Inbox messages received since `since`. Delta allows only this one filter. */
+  static inboxDeltaStart(since: Date) {
+    const filter = encodeURIComponent(`receivedDateTime ge ${since.toISOString()}`);
+    return `${GRAPH}/me/mailFolders/inbox/messages/delta?changeType=created&$select=id,internetMessageId,receivedDateTime,from&$filter=${filter}`;
+  }
+
+  /** Attachment metadata only; contentBytes is left out. */
+  listAttachments(messageId: string) {
+    return this.request<{ value: GraphAttachmentMeta[] }>(
+      `/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`,
+      { headers: { Prefer: MAIL_PREFER } }
+    ).then((r) => r.value);
+  }
+
+  getAttachment(messageId: string, attachmentId: string) {
+    return this.request<GraphAttachmentMeta>(
+      `/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}?$select=id,name,contentType,size,isInline`,
+      { headers: { Prefer: MAIL_PREFER } }
+    );
+  }
+
+  /** Raw bytes of a file attachment. */
+  attachmentContent(messageId: string, attachmentId: string) {
+    return this.request<{ bytes: ArrayBuffer; contentType: string | null }>(
+      `/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/$value`,
+      { headers: { Prefer: MAIL_PREFER }, raw: "bytes" }
+    );
+  }
+
   /** A draft in the user's Drafts folder. Nothing is sent. */
   createDraft(mail: { to: string[]; subject: string; body: string }) {
     return this.request<{ id: string; webLink?: string }>("/me/messages", {
@@ -306,9 +386,12 @@ export class GraphClient {
     lifecycleNotificationUrl: string;
     clientState: string;
     expiresAt: Date;
+    immutableIds?: boolean;
   }) {
     return this.request<GraphSubscriptionResponse>("/subscriptions", {
       method: "POST",
+      // Notifications then carry the same immutable ids getMessage uses.
+      headers: input.immutableIds ? { Prefer: 'IdType="ImmutableId"' } : {},
       body: JSON.stringify({
         resource: input.resource,
         changeType: input.changeType,

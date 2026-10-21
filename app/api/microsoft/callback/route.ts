@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { getCurrentWorkspaceContext } from "@/lib/workspace-access";
 import { getGraphClientForConnection, tokenFields } from "@/lib/microsoft/connection";
 import { exchangeCode, MicrosoftTokenError, PKCE_COOKIE, readIdToken, verifyCallback } from "@/lib/microsoft/oauth";
+import { startMailIngest, syncInbox } from "@/lib/microsoft/mail";
 import { ensureCalendarSubscription } from "@/lib/microsoft/subscriptions";
 import { relayFromEnv } from "@/lib/meetings/relay-client";
 import { syncCalendar } from "@/lib/meetings/sync";
@@ -65,6 +66,10 @@ export async function GET(request: NextRequest) {
     const graph = getGraphClientForConnection(connectionId);
     await ensureCalendarSubscription(connectionId, graph).catch(() => undefined);
     await syncCalendar(connectionId, graph, relayFromEnv()).catch(() => undefined);
+    // The service mailbox also starts feeding the lead inbox; any other mailbox is left alone.
+    if (await startMailIngest(connectionId, graph).catch(() => false)) {
+      await syncInbox(connectionId, { graph, relay: relayFromEnv() }).catch(() => undefined);
+    }
   });
   return back(request, "connected");
 }

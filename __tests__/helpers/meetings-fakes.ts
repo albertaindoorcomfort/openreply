@@ -2,8 +2,8 @@
  * In-memory stand-ins for Microsoft Graph (as a fetch function, so the real
  * GraphClient HTTP code runs) and for Relay's adapter API.
  */
-import type { GraphEvent } from "../../lib/microsoft/graph";
-import type { FeedbackInput, RelayApi, RelayContact, RelayContactProfile, TaskInput, TimelineInput } from "../../lib/meetings/relay-client";
+import type { GraphAttachmentMeta, GraphEvent, GraphMessage } from "../../lib/microsoft/graph";
+import { RelayError, type FeedbackInput, type InboundEventInput, type RelayApi, RelayContact, RelayContactProfile, TaskInput, TimelineInput } from "../../lib/meetings/relay-client";
 
 type Busy = { email: string; start: string; end: string; status?: string };
 
@@ -18,6 +18,9 @@ export class FakeGraph {
   onlineMeetings = new Map<string, string>(); // joinUrl -> id
   transcripts = new Map<string, { id: string; createdDateTime: string; vtt: string }[]>();
   drafts: { id: string; to: string[]; subject: string; body: string }[] = [];
+  /** Inbox messages in arrival order; the delta returns those after the last delta link. */
+  messages: GraphMessage[] = [];
+  attachments = new Map<string, (GraphAttachmentMeta & { content: string })[]>();
   private seq = 0;
   private readonly run = Math.random().toString(36).slice(2, 8);
 
@@ -38,6 +41,27 @@ export class FakeGraph {
     };
     this.events.set(id, ev);
     return ev;
+  }
+
+  /** A message arriving in the Inbox. */
+  receiveMail(m: Partial<GraphMessage> & { from: string; body?: string; attachments?: (GraphAttachmentMeta & { content: string })[] }) {
+    const id = m.id ?? this.nextId("msg");
+    const msg: GraphMessage = {
+      internetMessageId: `<${id}@mail.example>`,
+      conversationId: `conv-${id}`,
+      subject: "Furnace quote",
+      receivedDateTime: new Date().toISOString(),
+      hasAttachments: !!m.attachments?.length,
+      isDraft: false,
+      uniqueBody: { contentType: "text", content: m.body ?? "Hi, can you quote a new furnace?" },
+      body: { contentType: "text", content: `${m.body ?? "Hi, can you quote a new furnace?"}\n\n> earlier thread` },
+      ...m,
+      id,
+      from: { emailAddress: { address: m.from, name: "Jordan Lee" } },
+    };
+    this.messages.push(msg);
+    if (m.attachments) this.attachments.set(id, m.attachments);
+    return msg;
   }
 
   /** Simulates someone editing the event in Outlook. */
@@ -130,6 +154,28 @@ export class FakeGraph {
       const t = list.find((x) => x.id === tr[2]);
       return t ? new Response(t.vtt, { status: 200, headers: { "content-type": "text/vtt" } }) : json(404, {});
     }
+    if (method === "GET" && p === "/me/mailFolders/inbox/messages/delta") {
+      const token = url.searchParams.get("$deltatoken");
+      if (token === "expired") return json(410, { error: { code: "SyncStateNotFound" } });
+      const after = token ? Number(token) : 0;
+      const value = this.messages.slice(after).map(({ id, internetMessageId, receivedDateTime, from }) => ({ id, internetMessageId, receivedDateTime, from }));
+      return json(200, { value, "@odata.deltaLink": `https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=${this.messages.length}` });
+    }
+    const att = p.match(/^\/me\/messages\/([^/]+)\/attachments(?:\/([^/]+?))?(\/\$value)?$/);
+    if (att && method === "GET") {
+      const list = this.attachments.get(att[1]) ?? [];
+      const meta = (a: GraphAttachmentMeta & { content: string }): GraphAttachmentMeta => ({ id: a.id, name: a.name, contentType: a.contentType, size: a.size, isInline: a.isInline });
+      if (!att[2]) return json(200, { value: list.map(meta) });
+      const a = list.find((x) => x.id === att[2]);
+      if (!a) return json(404, { error: { code: "ErrorItemNotFound" } });
+      if (att[3]) return new Response(a.content, { status: 200, headers: { "content-type": "application/octet-stream" } });
+      return json(200, meta(a));
+    }
+    const msgMatch = p.match(/^\/me\/messages\/([^/]+)$/);
+    if (msgMatch && method === "GET") {
+      const m = this.messages.find((x) => x.id === msgMatch[1]);
+      return m ? json(200, m) : json(404, { error: { code: "ErrorItemNotFound" } });
+    }
     if (method === "GET" && p === "/me/messages") return json(200, { value: [] });
     if (method === "POST" && p === "/me/messages") {
       const d = { id: this.nextId("draft"), to: body.toRecipients.map((r: { emailAddress: { address: string } }) => r.emailAddress.address), subject: body.subject, body: body.body.content };
@@ -166,6 +212,9 @@ export class FakeRelay implements RelayApi {
   drafts: { conversationId: string; body: string; idempotencyKey: string; id: string }[] = [];
   failTimeline = 0;
   feedback: FeedbackInput[] = [];
+  inbound: InboundEventInput[] = [];
+  /** Next inbound posts fail with this status (503 = transient, 400 = refused). */
+  inboundFailures: number[] = [];
 
   addContact(c: Partial<RelayContactProfile> & { id: string; primaryEmail: string }) {
     this.contacts.set(c.id, { conversations: [], tasks: [], opportunities: [], ...c } as RelayContactProfile);
@@ -194,6 +243,15 @@ export class FakeRelay implements RelayApi {
   async postFeedback(f: FeedbackInput) {
     if (!this.feedback.some((x) => x.idempotencyKey === f.idempotencyKey)) this.feedback.push(f);
     return { feedbackId: `fb${this.feedback.length}` };
+  }
+  async postInboundEvent(event: InboundEventInput) {
+    const status = this.inboundFailures.shift();
+    if (status) throw new RelayError(status, "error", "/events");
+    // Relay is idempotent on externalMessageId.
+    const i = this.inbound.findIndex((e) => e.externalMessageId === event.externalMessageId);
+    if (i === -1) this.inbound.push(event);
+    const n = i === -1 ? this.inbound.length : i + 1;
+    return { duplicate: i !== -1, conversationId: `rconv-${event.externalThreadId}`, messageId: `rmsg${n}` };
   }
   async createDraft(conversationId: string, draft: { body: string; idempotencyKey: string }) {
     const d = { conversationId, body: draft.body, idempotencyKey: draft.idempotencyKey, id: `rdraft${this.drafts.length + 1}` };

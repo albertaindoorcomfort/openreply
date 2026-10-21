@@ -76,6 +76,20 @@ export interface FeedbackInput {
   idempotencyKey: string;
 }
 
+/** Normalised inbound message for POST /events. See docs/lead-model.md. */
+export interface InboundEventInput {
+  channel: "EMAIL";
+  channelAccountRef: string;
+  externalThreadId: string;
+  externalMessageId: string;
+  occurredAt: string;
+  from: { displayName?: string; identities: { kind: "EMAIL"; value: string }[] };
+  subject?: string;
+  body: string;
+  kind: "MESSAGE";
+  attachments: { name: string; url: string; contentType?: string }[];
+}
+
 export interface RelayApi {
   findContactsByEmail(email: string): Promise<RelayContact[]>;
   getContact(id: string): Promise<RelayContactProfile | null>;
@@ -83,6 +97,7 @@ export interface RelayApi {
   createTask(task: TaskInput): Promise<{ id: string }>;
   createDraft(conversationId: string, draft: { body: string; rationale: string; evidence: unknown[]; idempotencyKey: string }): Promise<{ id: string }>;
   postFeedback(feedback: FeedbackInput): Promise<{ feedbackId: string }>;
+  postInboundEvent(event: InboundEventInput): Promise<{ duplicate: boolean; conversationId: string; messageId: string }>;
 }
 
 export class RelayClient implements RelayApi {
@@ -154,6 +169,15 @@ export class RelayClient implements RelayApi {
       body: JSON.stringify(feedback),
     });
     return { feedbackId: r.feedbackId };
+  }
+
+  /** Idempotent on externalMessageId: a repeat returns the first message with duplicate: true. */
+  async postInboundEvent(event: InboundEventInput) {
+    const r = await this.call<{ duplicate?: boolean; conversationId: string; messageId: string }>("/events", {
+      method: "POST",
+      body: JSON.stringify(event),
+    });
+    return { duplicate: !!r.duplicate, conversationId: r.conversationId, messageId: r.messageId };
   }
 }
 

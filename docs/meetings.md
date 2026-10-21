@@ -44,6 +44,33 @@ Each user connects their own mailbox from **Meetings › Microsoft 365**. Tokens
 are AES-256-GCM encrypted at rest and refreshed on use; a revoked or expired
 grant marks the connection `NEEDS_REAUTH` and stops background calls for it.
 
+## Inbound email for the lead inbox
+
+The service mailbox (`LEADS_OUTLOOK_MAILBOX`, the same mailbox Relay sends
+from) feeds new Inbox mail into the lead inbox. Staff mailboxes connected for
+meetings are never read.
+
+- **Two paths, one post.** A Graph subscription on
+  `me/mailFolders('inbox')/messages` (`created`) gives each message within
+  seconds. An Inbox delta query on every cron run is the backstop for missed
+  or failed notifications. Both use immutable message ids and go through the
+  `InboundMail` ledger, so a message is fetched and posted once.
+- **Normalised for Relay.** Each message goes to `POST /api/relay/v1/events`
+  (`events:ingest` scope) as channel `EMAIL`: `channelAccountRef` is the
+  mailbox address, `externalThreadId` is the Graph `conversationId`,
+  `externalMessageId` is the `internetMessageId` (Relay's dedupe key and the
+  reply target), and `body` is the plain-text `uniqueBody`, without the quoted
+  history. File attachments are refs to
+  `/api/microsoft/mail/attachments/...`, which streams the file from Graph to
+  signed-in members of the workspace, only for ingested messages, and always
+  as a download.
+- **Skipped, with a reason.** Mail from the mailbox itself (including
+  send-as), internal domains, `mailer-daemon` or `postmaster`, drafts, and
+  mail received before ingestion started. Connecting picks up the last
+  `MAIL_INGEST_LOOKBACK_HOURS` (72 by default), never the whole mailbox.
+- **Failures.** A Relay outage backs off and retries for up to 8 attempts;
+  a message Relay refuses (4xx) is marked dead and not resent.
+
 ## What Graph does and does not provide
 
 Checked against the Graph v1.0 documentation:

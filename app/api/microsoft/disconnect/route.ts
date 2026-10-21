@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   }
   await prisma.microsoftConnection.update({
     where: { id: connection.id },
-    data: { status: "DISCONNECTED", statusReason: "user", accessTokenEnc: "", refreshTokenEnc: "", calendarDeltaLink: null },
+    data: { status: "DISCONNECTED", statusReason: "user", accessTokenEnc: "", refreshTokenEnc: "", calendarDeltaLink: null, mailDeltaLink: null },
   });
   return NextResponse.json({ success: true });
 }

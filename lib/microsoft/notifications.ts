@@ -6,7 +6,8 @@ import { applyGraphEvent, syncCalendar } from "@/lib/meetings/sync";
 import type { RelayApi } from "@/lib/meetings/relay-client";
 import { ConnectionUnavailableError } from "./connection";
 import { GraphError, type GraphClient } from "./graph";
-import { clientStateMatches, createCalendarSubscription, renewSubscription } from "./subscriptions";
+import { processMessage, syncInbox } from "./mail";
+import { clientStateMatches, createSubscription, renewSubscription, subscriptionKind } from "./subscriptions";
 
 /**
  * Inbound Graph change notifications.
@@ -19,7 +20,8 @@ import { clientStateMatches, createCalendarSubscription, renewSubscription } fro
  * Idempotency: while a notification for an event is pending, more for the
  * same event collapse into it (the dedupe key). Once processed, its key is
  * retired so a later change makes a new row. Applying the same event twice is
- * a no-op because sync compares changeKey.
+ * a no-op because sync compares changeKey; a message goes through the
+ * InboundMail ledger, which posts it to Relay once.
  */
 
 const MAX_ATTEMPTS = 8;
@@ -85,22 +87,30 @@ export interface ProcessDeps {
 
 async function handle(row: GraphNotification, deps: ProcessDeps) {
   const graph = deps.graph(row.connectionId);
+  const sub = await prisma.graphSubscription.findUnique({ where: { graphSubscriptionId: row.graphSubscriptionId } });
+  const kind = sub ? subscriptionKind(sub.resource) : "calendar";
+  const resync = () => (kind === "mail" ? syncInbox(row.connectionId, { graph, relay: deps.relay, now: deps.now }) : syncCalendar(row.connectionId, graph, deps.relay));
+
   if (row.lifecycleEvent) {
-    const sub = await prisma.graphSubscription.findUnique({ where: { graphSubscriptionId: row.graphSubscriptionId } });
     if (row.lifecycleEvent === "reauthorizationRequired" && sub) {
       await renewSubscription(sub.id, graph);
     } else if (row.lifecycleEvent === "subscriptionRemoved") {
       if (sub) await prisma.graphSubscription.update({ where: { id: sub.id }, data: { status: "REMOVED" } });
-      await createCalendarSubscription(row.connectionId, graph);
-      await syncCalendar(row.connectionId, graph, deps.relay);
+      await createSubscription(row.connectionId, graph, kind);
+      await resync();
     } else if (row.lifecycleEvent === "missed") {
-      await syncCalendar(row.connectionId, graph, deps.relay);
+      await resync();
     }
     return;
   }
 
   const connection = await prisma.microsoftConnection.findUniqueOrThrow({ where: { id: row.connectionId } });
   if (!row.resourceId) return;
+  if (kind === "mail") {
+    // Only "created" is subscribed. Failures stay on the mail ledger and retry there.
+    if (row.changeType === "created") await processMessage(connection, row.resourceId, { graph, relay: deps.relay, now: deps.now });
+    return;
+  }
   if (row.changeType === "deleted") {
     await applyGraphEvent(connection, { id: row.resourceId, "@removed": { reason: "deleted" } }, deps.relay);
     return;

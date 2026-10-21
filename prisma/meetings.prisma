@@ -26,11 +26,17 @@ model MicrosoftConnection {
   /// Graph delta link for the calendarView sync window.
   calendarDeltaLink  String?
   calendarSyncedAt   DateTime?
+  /// Inbox delta link, kept only for the service mailbox that feeds the lead inbox.
+  mailDeltaLink      String?
+  mailSyncedAt       DateTime?
+  /// Mail received before this is never ingested (set when ingestion starts).
+  mailIngestFrom     DateTime?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
   subscriptions GraphSubscription[]
   meetings      Meeting[]
+  inboundMail   InboundMail[]
 
   @@unique([workspaceId, userId])
   @@unique([workspaceId, msTenantId, msUserId])
@@ -317,4 +323,41 @@ model MeetingSettings {
   businessHoursStart      Int      @default(8)
   businessHoursEnd        Int      @default(17)
   updatedAt               DateTime @updatedAt
+}
+
+/// One Inbox message of the service mailbox and what happened to it. The
+/// ledger makes webhook and delta deliveries of the same message one post to
+/// Relay, records why mail was skipped, and lets the cron job retry failures.
+/// Message content is not stored here; Relay keeps the canonical copy.
+model InboundMail {
+  id                  String            @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  /// Immutable Graph message id.
+  graphMessageId      String
+  internetMessageId   String?
+  receivedAt          DateTime?
+  status              InboundMailStatus @default(PENDING)
+  skipReason          String?
+  attempts            Int               @default(0)
+  nextAttemptAt       DateTime          @default(now())
+  lastError           String?
+  relayConversationId String?
+  relayMessageId      String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  connection MicrosoftConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, graphMessageId])
+  @@index([status, nextAttemptAt])
+  @@index([workspaceId])
+}
+
+enum InboundMailStatus {
+  PENDING
+  DELIVERED
+  SKIPPED
+  FAILED
+  DEAD
 }
