@@ -790,20 +790,24 @@ async function sendPostbackOnce({
   operationId,
   send,
 }: {
-  operationId: string;
+  operationId: string | null;
   send: () => Promise<unknown>;
 }): Promise<boolean> {
-  try {
-    await prisma.postbackDelivery.create({ data: { id: operationId } });
-  } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "P2002"
-    )
-      return false;
-    throw error;
+  // A null id means the caller has no idempotency key for this send and
+  // accepts that a retry could resend it — there is nothing to claim.
+  if (operationId) {
+    try {
+      await prisma.postbackDelivery.create({ data: { id: operationId } });
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "P2002"
+      )
+        return false;
+      throw error;
+    }
   }
   try {
     await send();
@@ -812,7 +816,9 @@ async function sendPostbackOnce({
     // A durable claim survives queue eviction, concurrent redelivery, and a
     // process crash during delivery. Only confirmed rejections permit retry.
     if (isConfirmedSendRejection(error)) {
-      await prisma.postbackDelivery.delete({ where: { id: operationId } });
+      if (operationId) {
+        await prisma.postbackDelivery.delete({ where: { id: operationId } });
+      }
       throw error;
     }
     throw classifySendError(error);
