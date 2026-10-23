@@ -221,6 +221,9 @@ model Automation {
   wholeWordMatch          Boolean  @default(true)
   reportShareSlug         String?  @unique
   reportShareEnabled      Boolean  @default(true)
+  // The Apollo approval that created this flow through the service API. Unique,
+  // so one approval creates one flow. Null for flows made in the dashboard.
+  approvalId              String?  @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

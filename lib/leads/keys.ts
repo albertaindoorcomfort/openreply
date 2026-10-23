@@ -10,6 +10,9 @@ export const SCOPES = [
   "messages:send",
   "forms:submit",
   "feedback:write",
+  // Relay's social flows: read flows and their results, and create one on an approval grant.
+  "flows:read",
+  "flows:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
