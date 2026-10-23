@@ -47,10 +47,10 @@ function sign(secret: string, body: string): Buffer {
   return createHmac("sha256", secret).update(body).digest();
 }
 
-function assertSecret(secret: string | undefined): asserts secret is string {
+function assertSecret(secret: string | undefined, name = "RELAY_GRANT_SECRET"): asserts secret is string {
   if (!secret || secret.length < MIN_SECRET_LENGTH) {
     throw new Error(
-      `RELAY_GRANT_SECRET must be set to at least ${MIN_SECRET_LENGTH} characters`
+      `${name} must be set to at least ${MIN_SECRET_LENGTH} characters`
     );
   }
 }
@@ -118,6 +118,99 @@ export function verifySendGrant(
   const nowSec = Math.floor(now / 1000);
   if (claims.exp <= nowSec) return { ok: false, reason: "EXPIRED" };
   // Clock skew allowance of 30s for iat; a grant can never outlive the max TTL.
+  if (claims.iat > nowSec + 30) return { ok: false, reason: "NOT_YET_VALID" };
+  if (claims.exp - claims.iat > MAX_GRANT_TTL_SECONDS) return { ok: false, reason: "TTL_TOO_LONG" };
+  return { ok: true, claims };
+}
+
+/**
+ * Flow grants.
+ *
+ * Creating a Relay flow through the service API switches on automatic comment
+ * replies and DMs, so it needs the same proof of a human approval as a send.
+ * The grant names the workspace and the SHA-256 of the exact request body, so
+ * the approved flow is the one created. The approval id is stored on the flow
+ * under a unique index, so a grant creates one flow.
+ */
+export const FLOW_GRANT_AUDIENCE = "openreply.relay.flow";
+/** Its own secret, separate from the send grant's, so either can be rotated alone. */
+const FLOW_SECRET_NAME = "RELAY_FLOW_GRANT_SECRET";
+
+export interface FlowGrantClaims {
+  v: 1;
+  aud: typeof FLOW_GRANT_AUDIENCE;
+  approvalId: string;
+  workspaceId: string;
+  bodySha256: string;
+  /** Who approved, for the audit trail. Never used for authorization here. */
+  approvedBy: string;
+  iat: number;
+  exp: number;
+}
+
+export type FlowGrantCheck =
+  | { ok: true; claims: FlowGrantClaims }
+  | { ok: false; reason: string };
+
+export function mintFlowGrant(
+  secret: string,
+  input: Omit<FlowGrantClaims, "v" | "aud" | "iat" | "exp">,
+  ttlSeconds = 300,
+  now = Date.now()
+): string {
+  assertSecret(secret, FLOW_SECRET_NAME);
+  const iat = Math.floor(now / 1000);
+  const claims: FlowGrantClaims = {
+    v: 1,
+    aud: FLOW_GRANT_AUDIENCE,
+    ...input,
+    iat,
+    exp: iat + Math.min(ttlSeconds, MAX_GRANT_TTL_SECONDS),
+  };
+  const body = b64url(Buffer.from(JSON.stringify(claims), "utf8"));
+  return `${body}.${b64url(sign(secret, body))}`;
+}
+
+function parseFlowClaims(raw: unknown): FlowGrantClaims | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  // Version and audience are required here, so a send grant can never pass as a flow grant.
+  const ok =
+    c.v === 1 &&
+    c.aud === FLOW_GRANT_AUDIENCE &&
+    typeof c.approvalId === "string" && ID.test(c.approvalId) &&
+    typeof c.workspaceId === "string" && ID.test(c.workspaceId) &&
+    typeof c.bodySha256 === "string" && HEX64.test(c.bodySha256) &&
+    typeof c.approvedBy === "string" && c.approvedBy.length > 0 && c.approvedBy.length <= 128 &&
+    Number.isInteger(c.iat) && Number.isInteger(c.exp);
+  return ok ? (c as unknown as FlowGrantClaims) : null;
+}
+
+/** Checks signature, shape and time only. The caller matches the claims to the request. */
+export function verifyFlowGrant(
+  secret: string | undefined,
+  token: string,
+  now = Date.now()
+): FlowGrantCheck {
+  assertSecret(secret, FLOW_SECRET_NAME);
+  const parts = token.split(".");
+  if (parts.length !== 2 || token.length > 4096) return { ok: false, reason: "MALFORMED" };
+  const [body, sig] = parts;
+  const expected = sign(secret, body);
+  const given = Buffer.from(sig, "base64url");
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    return { ok: false, reason: "BAD_SIGNATURE" };
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  } catch {
+    return { ok: false, reason: "MALFORMED" };
+  }
+  const claims = parseFlowClaims(decoded);
+  if (!claims) return { ok: false, reason: "MALFORMED" };
+  const nowSec = Math.floor(now / 1000);
+  if (claims.exp <= nowSec) return { ok: false, reason: "EXPIRED" };
   if (claims.iat > nowSec + 30) return { ok: false, reason: "NOT_YET_VALID" };
   if (claims.exp - claims.iat > MAX_GRANT_TTL_SECONDS) return { ok: false, reason: "TTL_TOO_LONG" };
   return { ok: true, claims };
