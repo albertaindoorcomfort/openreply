@@ -47,10 +47,10 @@ function sign(secret: string, body: string): Buffer {
   return createHmac("sha256", secret).update(body).digest();
 }
 
-function assertSecret(secret: string | undefined): asserts secret is string {
+function assertSecret(secret: string | undefined, name = "RELAY_GRANT_SECRET"): asserts secret is string {
   if (!secret || secret.length < MIN_SECRET_LENGTH) {
     throw new Error(
-      `RELAY_GRANT_SECRET must be set to at least ${MIN_SECRET_LENGTH} characters`
+      `${name} must be set to at least ${MIN_SECRET_LENGTH} characters`
     );
   }
 }
@@ -133,6 +133,8 @@ export function verifySendGrant(
  * under a unique index, so a grant creates one flow.
  */
 export const FLOW_GRANT_AUDIENCE = "openreply.relay.flow";
+/** Its own secret, separate from the send grant's, so either can be rotated alone. */
+const FLOW_SECRET_NAME = "RELAY_FLOW_GRANT_SECRET";
 
 export interface FlowGrantClaims {
   v: 1;
@@ -156,7 +158,7 @@ export function mintFlowGrant(
   ttlSeconds = 300,
   now = Date.now()
 ): string {
-  assertSecret(secret);
+  assertSecret(secret, FLOW_SECRET_NAME);
   const iat = Math.floor(now / 1000);
   const claims: FlowGrantClaims = {
     v: 1,
@@ -190,7 +192,7 @@ export function verifyFlowGrant(
   token: string,
   now = Date.now()
 ): FlowGrantCheck {
-  assertSecret(secret);
+  assertSecret(secret, FLOW_SECRET_NAME);
   const parts = token.split(".");
   if (parts.length !== 2 || token.length > 4096) return { ok: false, reason: "MALFORMED" };
   const [body, sig] = parts;

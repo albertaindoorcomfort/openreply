@@ -14,7 +14,7 @@ Auth is the same workspace service key (`Authorization: Bearer orly_...`), minte
 
 ## Creating a flow
 
-A new flow answers comments and sends DMs on its own, so the API creates one only on a person's approval. Apollo signs a flow grant (`lib/leads/grant.ts`, audience `openreply.relay.flow`) with `RELAY_GRANT_SECRET` and sends it as `x-relay-grant`. The grant names the workspace and the SHA-256 of the exact request body. The approval id is stored on the flow under a unique index, so a repeat returns the same flow (`replay: true`) and never makes a second one.
+A new flow answers comments and sends DMs on its own, so the API creates one only on a person's approval. Apollo signs a flow grant (`lib/leads/grant.ts`, audience `openreply.relay.flow`) with `RELAY_FLOW_GRANT_SECRET` (its own secret, at least 32 characters, not the send grant's) and sends it as `x-flow-grant`. The grant names the workspace and the SHA-256 of the exact request body. The approval id is stored on the flow under a unique index, so a repeat returns the same flow (`replay: true`) and never makes a second one.
 
 Body (`FlowBody` in `lib/automation/flows-api.ts`):
 

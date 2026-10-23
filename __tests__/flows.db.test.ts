@@ -50,7 +50,7 @@ const grant = (body: string, approvalId = apr(), workspaceId = "ws_a") =>
 function post(body: string, key: string, g?: string) {
   return createPOST(new NextRequest("http://localhost/api/flows/v1", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...(g ? { "x-relay-grant": g } : {}) },
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...(g ? { "x-flow-grant": g } : {}) },
     body,
   }), undefined as never);
 }
@@ -58,7 +58,7 @@ const get = (url: string, key: string) => new NextRequest(url, { headers: { auth
 
 describe.skipIf(!DATABASE_URL)("Relay flows API on Postgres", () => {
   beforeAll(async () => {
-    process.env.RELAY_GRANT_SECRET = SECRET;
+    process.env.RELAY_FLOW_GRANT_SECRET = SECRET;
     sql = new Client({ connectionString: DATABASE_URL });
     await sql.connect();
     await sql.query(`CREATE SCHEMA "${schema}"`);

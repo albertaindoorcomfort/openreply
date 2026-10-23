@@ -53,7 +53,7 @@ export type FlowBody = z.infer<typeof FlowBody>;
  * the same approval returns the flow it already made.
  */
 export async function createFlowWithGrant(workspaceId: string, rawBody: string, grant: string) {
-  const check = verifyFlowGrant(process.env.RELAY_GRANT_SECRET, grant);
+  const check = verifyFlowGrant(process.env.RELAY_FLOW_GRANT_SECRET, grant);
   if (!check.ok) throw new LeadError(`GRANT_${check.reason}`, 403);
   const { claims } = check;
   if (claims.workspaceId !== workspaceId) throw new LeadError("GRANT_WRONG_WORKSPACE", 403);

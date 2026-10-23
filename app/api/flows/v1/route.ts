@@ -11,11 +11,11 @@ export const GET = route(async (request) => {
 
 /**
  * Creates a flow a person approved in Apollo. Needs flows:write and an
- * x-relay-grant flow grant over the exact body. 4xx is final.
+ * x-flow-grant flow grant over the exact body. 4xx is final.
  */
 export const POST = route(async (request) => {
   const actor = await serviceActor(request, "flows:write");
-  const grant = request.headers.get("x-relay-grant");
+  const grant = request.headers.get("x-flow-grant");
   if (!grant) throw new LeadError("GRANT_MISSING", 403);
   const raw = await request.text();
   if (raw.length > 32_000) throw new LeadError("PAYLOAD_TOO_LARGE", 413);
