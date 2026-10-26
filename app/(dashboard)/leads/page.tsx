@@ -4,8 +4,8 @@
  * Leads inbox
  *
  * Every lead conversation (web forms, email, Instagram, SMS, calls) in one
- * place. Three panes: the conversation list, the open thread with Carla's
- * draft and the composer, and the Copilot panel with Carla's assessment.
+ * place. Three panes: the conversation list, the open thread with AIC OS's
+ * draft and the composer, and the Copilot panel with AIC OS's assessment.
  * The open conversation lives in the URL (?c=<id>) so links from Today and
  * the contact profile land on it. List and thread poll every 10 seconds.
  */

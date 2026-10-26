@@ -7,7 +7,7 @@ import { requestHandoff } from "./conversations";
 import { recordEvent, type Actor } from "./timeline";
 
 /**
- * Carla's supervised loop for one conversation: classify, summarise, score,
+ * AIC OS's supervised loop for one conversation: classify, summarise, score,
  * recommend next actions and propose a reply. Internal work only. Nothing here
  * sends; a proposed reply waits for a person (or an Apollo approval).
  */
@@ -139,7 +139,7 @@ function templateReply(ctx: CarlaContext, intent: AssessmentOutput["intent"]): s
 
 // ── Model brain: Claude through the Messages API ───────────────────────────
 
-const SYSTEM = `You are Carla, the lead assistant for a home heating and cooling company. You read one customer conversation and return JSON only, matching this TypeScript type:
+const SYSTEM = `You are the lead assistant for a home heating and cooling company. You read one customer conversation and return JSON only, matching this TypeScript type:
 { intent: "emergency_service"|"service_request"|"quote_request"|"maintenance"|"scheduling"|"billing"|"complaint"|"general_question"|"opt_out"|"spam",
   urgency: "LOW"|"NORMAL"|"HIGH"|"EMERGENCY", sentiment: "positive"|"neutral"|"negative", leadScore: 0-100 integer,
   summary: string (2-3 sentences, for staff), nextActions: [{action: "reply"|"call"|"book_appointment"|"send_estimate"|"handoff"|"create_task"|"close", label, reason, dueInHours?}] (max 5),
@@ -231,8 +231,8 @@ export interface AssistResult {
 }
 
 /**
- * Runs Carla once on a conversation. Safe to repeat: the previous assessment is
- * superseded and a new draft replaces Carla's previous one.
+ * Runs AIC OS once on a conversation. Safe to repeat: the previous assessment is
+ * superseded and a new draft replaces AIC OS's previous one.
  */
 export async function runCarla(workspaceId: string, conversationId: string, brain: CarlaBrain = defaultBrain()): Promise<AssistResult> {
   const actor: Actor = { ...CARLA, workspaceId };
@@ -246,7 +246,7 @@ export async function runCarla(workspaceId: string, conversationId: string, brai
     output = await brain.assess(ctx);
   } catch (err) {
     if (brain === rulesBrain) throw err;
-    console.error("[Carla] model assessment failed, using rules:", err instanceof Error ? err.message : err);
+    console.error("[AIC OS] model assessment failed, using rules:", err instanceof Error ? err.message : err);
     output = await rulesBrain.assess(ctx);
     producer = `${rulesBrain.id} (fallback from ${brain.id})`;
   }
@@ -266,7 +266,7 @@ export async function runCarla(workspaceId: string, conversationId: string, brai
       type: "assessment.created", contactId: conversation.contactId, conversationId,
       payload: { assessmentId: a.id, intent: output.intent, urgency: output.urgency, leadScore: output.leadScore, producer },
     });
-    // Move a brand-new lead to qualifying once Carla has read it.
+    // Move a brand-new lead to qualifying once AIC OS has read it.
     if (output.intent !== "spam" && output.intent !== "opt_out") {
       const opp = await tx.opportunity.findFirst({ where: { contactId: conversation.contactId, outcome: "OPEN", stageKey: "new", deletedAt: null } });
       if (opp) {
@@ -275,7 +275,7 @@ export async function runCarla(workspaceId: string, conversationId: string, brai
         await recordEvent(tx, actor, { type: "opportunity.stage_changed", contactId: conversation.contactId, opportunityId: opp.id, payload: { from: "new", to: "qualifying" } });
       }
     }
-    // Follow-up tasks for the owner. Carla's own "reply" is the draft, not a task.
+    // Follow-up tasks for the owner. AIC OS's own "reply" is the draft, not a task.
     let tasksCreated = 0;
     for (const na of output.nextActions) {
       if (na.action === "reply" || na.action === "handoff" || na.action === "close") continue;

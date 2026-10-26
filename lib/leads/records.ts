@@ -30,7 +30,7 @@ export async function listContacts(actor: Actor, opts: { q?: string; stageKey?: 
   });
 }
 
-/** Everything known about one lead, for the profile and Carla's context. */
+/** Everything known about one lead, for the profile and AIC OS's context. */
 export async function getContactProfile(actor: Actor, contactId: string) {
   const contact = await prisma.contact.findFirst({
     where: { id: contactId, workspaceId: actor.workspaceId },

@@ -91,7 +91,7 @@ export async function getConversation(actor: Actor, conversationId: string) {
   return { ...c, assessment };
 }
 
-/** A person takes over: Carla stops, her open drafts are withdrawn. */
+/** A person takes over: AIC OS stops, its open drafts are withdrawn. */
 export async function takeOver(actor: Actor & { id: string }, conversationId: string) {
   await prisma.$transaction(async (tx) => {
     const c = await tx.conversation.findFirst({ where: { id: conversationId, workspaceId: actor.workspaceId } });
@@ -112,7 +112,7 @@ export async function takeOver(actor: Actor & { id: string }, conversationId: st
   await syncAutomationRule({ workspaceId: actor.workspaceId, conversationId, manual: true, actorUserId: actor.id });
 }
 
-/** Hand back to Carla (supervised), or set another mode. Autonomous is not available at launch. */
+/** Hand back to AIC OS (supervised), or set another mode. Autonomous is not available at launch. */
 export async function setMode(actor: Actor, conversationId: string, mode: AutomationMode) {
   if (mode === "AUTONOMOUS") throw new LeadError("AUTONOMOUS_NOT_ENABLED", 403, "Autonomous sending is not enabled.");
   await prisma.$transaction(async (tx) => {
@@ -127,7 +127,7 @@ export async function setMode(actor: Actor, conversationId: string, mode: Automa
   });
 }
 
-/** Carla asks for a person: mode HUMAN and an urgent-enough task for the owner. */
+/** AIC OS asks for a person: mode HUMAN and an urgent-enough task for the owner. */
 export async function requestHandoff(actor: Actor, conversationId: string, input: { reason: string; priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT" }) {
   const reason = z.string().trim().min(1).max(2000).parse(input.reason);
   const task = await prisma.$transaction(async (tx) => {
@@ -207,8 +207,8 @@ export async function markRead(actor: Actor, conversationId: string) {
 }
 
 /**
- * Staff-only messages. A NOTE is for colleagues; COACHING is guidance for Carla
- * and is fed into her next draft. Neither is ever sent to the customer.
+ * Staff-only messages. A NOTE is for colleagues; COACHING is guidance for AIC OS
+ * and is fed into its next draft. Neither is ever sent to the customer.
  */
 export async function addInternal(actor: Actor, conversationId: string, kind: "NOTE" | "COACHING", body: string) {
   const text = z.string().trim().min(1).max(10_000).parse(body);

@@ -28,9 +28,9 @@ export const FeedbackSchema = z.discriminatedUnion("targetKind", [
 
 /**
  * Stores a person's correction. An assessment correction also takes effect at
- * once, as a new assessment by that person that supersedes Carla's, so the
- * inbox shows the corrected view. Nothing here changes Carla's instructions:
- * corrections feed her context and the evaluation set only.
+ * once, as a new assessment by that person that supersedes AIC OS's, so the
+ * inbox shows the corrected view. Nothing here changes AIC OS's instructions:
+ * corrections feed its context and the evaluation set only.
  */
 export async function recordFeedback(
   actor: Actor,

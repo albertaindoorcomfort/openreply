@@ -21,13 +21,13 @@ Cross-module references use URNs: `aic:<kind>:<id>`, for example `aic:contact:cl
 | **Contact** | displayName, firstName, lastName, company, primaryEmail, primaryPhone, ownerUserId, stageKey, leadScore, source, sourceDetail, campaignRef, mergedIntoId, deletedAt, version | The lead. `stageKey` is its lifecycle stage. |
 | **ContactIdentity** | contactId, kind (`EMAIL`, `PHONE`, `INSTAGRAM`, `MESSENGER`, `WEB_VISITOR`, `EXTERNAL`), value, verified, source | Unique per workspace + kind + value. Emails lower-cased; phones E.164; social ids as the platform gives them. This is the identity-resolution key. |
 | **Consent** | contactId, channel (`EMAIL`, `SMS`, `CALL`, `DM`), basis (`EXPRESS`, `IMPLIED`), status (`GRANTED`, `WITHDRAWN`), source, evidence, capturedAt, expiresAt, withdrawnAt | CASL: implied consent from an inquiry expires after 6 months, from a purchase after 2 years. Sends check the latest record per channel. |
-| **Conversation** | contactId, channel (`WEB_FORM`, `EMAIL`, `INSTAGRAM`, `MESSENGER`, `SMS`, `CALL`, `VOICEMAIL`, `CHAT`), channelAccountRef, externalThreadId, subject, status (`OPEN`, `SNOOZED`, `CLOSED`), mode, ownerUserId, assignedAgentId, lockUserId, lockExpiresAt, lastInboundAt, lastOutboundAt, replyWindowEndsAt, unreadCount, version | `mode`: `SUPERVISED` (Carla drafts, a human approves), `HUMAN` (Carla paused, a person has taken over), `MANUAL_ONLY`, `AUTONOMOUS` (reserved, off at launch). |
-| **Message** | conversationId, contactId, direction (`INBOUND`, `OUTBOUND`, `INTERNAL`), kind (`MESSAGE`, `NOTE`, `COACHING`, `TRANSCRIPT`, `VOICEMAIL`, `SYSTEM`), authorKind (`CONTACT`, `USER`, `AGENT`, `SYSTEM`), authorId, body, attachments, externalMessageId, occurredAt, deliveryStatus | `INTERNAL` messages (notes, coaching to Carla) are never sent to a customer and never shown on a customer channel. |
+| **Conversation** | contactId, channel (`WEB_FORM`, `EMAIL`, `INSTAGRAM`, `MESSENGER`, `SMS`, `CALL`, `VOICEMAIL`, `CHAT`), channelAccountRef, externalThreadId, subject, status (`OPEN`, `SNOOZED`, `CLOSED`), mode, ownerUserId, assignedAgentId, lockUserId, lockExpiresAt, lastInboundAt, lastOutboundAt, replyWindowEndsAt, unreadCount, version | `mode`: `SUPERVISED` (AIC OS drafts, a human approves), `HUMAN` (AIC OS paused, a person has taken over), `MANUAL_ONLY`, `AUTONOMOUS` (reserved, off at launch). |
+| **Message** | conversationId, contactId, direction (`INBOUND`, `OUTBOUND`, `INTERNAL`), kind (`MESSAGE`, `NOTE`, `COACHING`, `TRANSCRIPT`, `VOICEMAIL`, `SYSTEM`), authorKind (`CONTACT`, `USER`, `AGENT`, `SYSTEM`), authorId, body, attachments, externalMessageId, occurredAt, deliveryStatus | `INTERNAL` messages (notes, coaching to AIC OS) are never sent to a customer and never shown on a customer channel. |
 | **Draft** | conversationId, body, bodySha256, authorKind, authorId, rationale, evidence, confidence, basedOnMessageId, status (`PROPOSED`, `SENDING`, `SENT`, `FAILED`, `SEND_UNCONFIRMED`, `DISCARDED`, `STALE`), approvalId, idempotencyKey | A send is refused as `STALE` if a newer inbound or any outbound arrived after `basedOnMessageId`. `approvalId` and `idempotencyKey` are unique, so one approval or one click sends once. |
 | **Task** | title, notes, dueAt, remindAt, status (`OPEN`, `DONE`, `CANCELLED`), priority, contactId, conversationId, opportunityId, assigneeUserId, assigneeAgentId, createdByKind, createdById, completedAt, deletedAt, version | Follow-ups and reminders. |
 | **Pipeline / PipelineStage** | name; stage key, name, position, kind (`OPEN`, `WON`, `LOST`) | Per workspace. Default stages: `new`, `qualifying`, `nurturing`, `appointment`, `estimate`, `negotiation`, `won`, `lost`, `reactivation`. |
 | **Opportunity** | contactId, pipelineId, stageKey, title, valueCents, currency, ownerUserId, expectedCloseAt, outcome (`OPEN`, `WON`, `LOST`), lostReason, campaignRef, closedAt, deletedAt, version | Deal value and conversion outcome. |
-| **Assessment** | conversationId, contactId, intent, urgency (`LOW`, `NORMAL`, `HIGH`, `EMERGENCY`), sentiment, leadScore, summary, nextActions, evidence, producer, confidence, supersededAt | Carla's classify, summarise and next-action output. Each assessment is kept; the newest unsuperseded one is current. |
+| **Assessment** | conversationId, contactId, intent, urgency (`LOW`, `NORMAL`, `HIGH`, `EMERGENCY`), sentiment, leadScore, summary, nextActions, evidence, producer, confidence, supersededAt | AIC OS's classify, summarise and next-action output. Each assessment is kept; the newest unsuperseded one is current. |
 | **Feedback** | targetKind (`ASSESSMENT`, `DRAFT`, `RECOMMENDATION`, `SUMMARY`, `ROUTING`, `MEETING_NOTE`), targetId, original, corrected, reason, userId, conversationId, status (`NEW`, `TRIAGED`, `IN_EVAL`, `ADOPTED`, `REJECTED`) | Human corrections. Inputs to evaluation, never applied to production prompts or policy automatically. |
 | **DuplicateCandidate** | contactId, otherContactId, reason, score, status (`OPEN`, `MERGED`, `DISMISSED`) | Raised when one inbound matches identities on two contacts, or by name+phone/email similarity. |
 | **TimelineEvent** | type, actorKind, actorId, contactId, conversationId, opportunityId, taskId, payload, occurredAt | Append-only. See event types below. |
@@ -57,11 +57,11 @@ Base path `/api/relay/v1`. Agent calls (`assist:write`) may name the agent in `x
 | `POST /timeline` | `timeline:write` | Write a `meeting.*`, `call.*` or `voicemail.*` event linked to a contact or opportunity. |
 | `GET /contacts?q=`, `GET /contacts/:id` | `inbox:read` | Lookup and full profile (identities, consent, conversations, tasks, opportunities, latest assessment). |
 | `GET /conversations?status=&mode=`, `GET /conversations/:id` | `inbox:read` | Inbox and thread with messages. |
-| `POST /conversations/:id/assist` | `assist:write` | Run Carla now: classification, summary, next actions, tasks, draft. |
-| `POST /conversations/:id/drafts` | `assist:write` | Carla's proposed reply. Never sends. An `idempotency-key` header (8 to 100 of `A-Za-z0-9_:.-`) makes a retry return the first draft. |
-| `POST /feedback` | `feedback:write` | Forwards a person's correction: `{targetKind, targetId, corrected, original?, reason?, conversationId?, contactId?, correctedBy}`. `targetKind` is `ASSESSMENT`, `DRAFT`, `RECOMMENDATION`, `SUMMARY`, `ROUTING` or `MEETING_NOTE`; `correctedBy` must be a member of the key's workspace. An `idempotency-key` header stores a retry once. Returns `{feedbackId, status}`. Feedback never changes Carla's instructions. |
+| `POST /conversations/:id/assist` | `assist:write` | Run AIC OS now: classification, summary, next actions, tasks, draft. |
+| `POST /conversations/:id/drafts` | `assist:write` | AIC OS's proposed reply. Never sends. An `idempotency-key` header (8 to 100 of `A-Za-z0-9_:.-`) makes a retry return the first draft. |
+| `POST /feedback` | `feedback:write` | Forwards a person's correction: `{targetKind, targetId, corrected, original?, reason?, conversationId?, contactId?, correctedBy}`. `targetKind` is `ASSESSMENT`, `DRAFT`, `RECOMMENDATION`, `SUMMARY`, `ROUTING` or `MEETING_NOTE`; `correctedBy` must be a member of the key's workspace. An `idempotency-key` header stores a retry once. Returns `{feedbackId, status}`. Feedback never changes AIC OS's instructions. |
 | `POST /drafts/:id/send` | `messages:send` | Sends one approved draft. Needs a send grant (below). |
-| `POST /conversations/:id/handoff` | `assist:write` | Carla asks for a human: sets mode `HUMAN`, raises a task. |
+| `POST /conversations/:id/handoff` | `assist:write` | AIC OS asks for a human: sets mode `HUMAN`, raises a task. |
 | `POST /tasks`, `PATCH /tasks/:id` | `tasks:write` | Tasks and reminders. |
 | `GET /changes?after=<cursor>` | `inbox:read` | Timeline feed for Apollo, Trigr and Compass. |
 
@@ -94,10 +94,10 @@ Humans sending from the inbox UI use their session, a client-generated `idempote
 
 ## Human takeover and collision rules
 
-- **Take over** sets mode `HUMAN`, owner = that user, cancels Carla's open drafts (`DISCARDED`) and writes `conversation.mode_changed`. Carla cannot send in `HUMAN` mode, even with a grant.
+- **Take over** sets mode `HUMAN`, owner = that user, cancels AIC OS's open drafts (`DISCARDED`) and writes `conversation.mode_changed`. AIC OS cannot send in `HUMAN` mode, even with a grant.
 - **Resume** sets mode back to `SUPERVISED`.
 - **Compose lock**: opening the composer takes a 2-minute lock (`lockUserId`, `lockExpiresAt`), renewed while typing. Another person sees who is replying; a send by someone without the lock is refused with `409 LOCKED`.
-- **Coaching**: a `COACHING` message is internal, attached to the conversation, and is included in Carla's next drafting context. It is never sent.
+- **Coaching**: a `COACHING` message is internal, attached to the conversation, and is included in AIC OS's next drafting context. It is never sent.
 
 ## Website forms
 

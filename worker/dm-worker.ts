@@ -6,7 +6,7 @@ import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
 import os from "node:os";
 
 const worker = createDMWorker();
-// Carla reads new lead messages and proposes replies. It never sends.
+// AIC OS reads new lead messages and proposes replies. It never sends.
 const carlaWorker = createCarlaWorker();
 const startedAt = new Date().toISOString();
 const HEARTBEAT_INTERVAL_MS = 30_000;

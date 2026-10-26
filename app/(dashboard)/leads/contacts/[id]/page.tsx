@@ -81,8 +81,8 @@ const EVENT_LABEL: Record<string, StaticMessageKey> = {
   "conversation.closed": "Conversation closed",
   "message.received": "Message received",
   "message.sent": "Message sent",
-  "assessment.created": "Carla assessed the lead",
-  "draft.proposed": "Carla proposed a reply",
+  "assessment.created": "AIC OS assessed the lead",
+  "draft.proposed": "AIC OS proposed a reply",
   "draft.approved": "Reply approved",
   "draft.discarded": "Draft discarded",
   "draft.stale": "Draft out of date",
@@ -99,7 +99,7 @@ const EVENT_LABEL: Record<string, StaticMessageKey> = {
 const ACTOR_LABEL: Record<string, StaticMessageKey> = {
   CONTACT: "Contact",
   USER: "Staff",
-  AGENT: "Carla",
+  AGENT: "AIC OS",
   SYSTEM: "System",
   SERVICE: "Integration",
 };

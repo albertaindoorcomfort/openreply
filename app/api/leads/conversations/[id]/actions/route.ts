@@ -19,9 +19,9 @@ const Action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("unlock") }),
   z.object({ action: z.literal("assign"), ownerUserId: z.string().max(100).nullable(), version: z.number().int().optional() }),
   z.object({ action: z.literal("note"), body: z.string().min(1).max(10_000) }),
-  /** Private guidance for Carla. Never shown to the customer. */
+  /** Private guidance for AIC OS. Never shown to the customer. */
   z.object({ action: z.literal("coach"), body: z.string().min(1).max(10_000) }),
-  /** Ask Carla to re-read the conversation now (after coaching, for example). */
+  /** Ask AIC OS to re-read the conversation now (after coaching, for example). */
   z.object({ action: z.literal("assist") }),
 ]);
 

@@ -1,4 +1,4 @@
-// Meetings: Outlook calendar, Teams meeting metadata and Carla's meeting
+// Meetings: Outlook calendar, Teams meeting metadata and AIC OS's meeting
 // assistant. Contacts, conversations, tasks and opportunities are canonical
 // in the lead model (Relay); meetings link to them by id and never copy them.
 //
@@ -167,7 +167,7 @@ enum MeetingSource {
 }
 
 /// Notes on a meeting: typed by a person, imported from a Teams transcript
-/// (only with consent), or written by Carla.
+/// (only with consent), or written by AIC OS.
 model MeetingNote {
   id          String            @id @default(cuid())
   workspaceId String
@@ -227,7 +227,7 @@ enum MeetingConsentStatus {
   WITHDRAWN
 }
 
-/// Carla's prep brief before a meeting. Each one is kept.
+/// AIC OS's prep brief before a meeting. Each one is kept.
 model MeetingBrief {
   id          String   @id @default(cuid())
   workspaceId String

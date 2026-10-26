@@ -46,6 +46,6 @@ export function createCarlaWorker() {
     connection: getRedisConnection(),
     concurrency: 3,
   });
-  worker.on("failed", (job, err) => console.error(`[Carla] job ${job?.id} failed:`, err.message));
+  worker.on("failed", (job, err) => console.error(`[AIC OS] job ${job?.id} failed:`, err.message));
   return worker;
 }

@@ -2,7 +2,7 @@
 
 /**
  * The middle pane of the lead inbox: conversation header with handoff
- * controls, the message thread, Carla's proposed draft and the composer.
+ * controls, the message thread, AIC OS's proposed draft and the composer.
  *
  * The parent remounts this component (key = conversation id), so composer
  * state, the reply lock and the pending idempotency key never leak between
@@ -252,7 +252,7 @@ export default function Thread({
       ? t("Reply to the customer (Enter to send, Shift+Enter for a new line)")
       : mode === "note"
         ? t("Note for your team. The customer does not see it.")
-        : t("Private guidance for Carla. The customer does not see it.");
+        : t("Private guidance for AIC OS. The customer does not see it.");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -290,7 +290,7 @@ export default function Thread({
           )}
           {detail.mode === "HUMAN" && (
             <button type="button" disabled={busy} onClick={() => void runAction({ action: "resume" })} className={buttonClass}>
-              {t("Hand back to Carla")}
+              {t("Hand back to AIC OS")}
             </button>
           )}
           <label className="flex items-center gap-1.5 text-xs text-muted">
@@ -356,7 +356,7 @@ export default function Thread({
       {proposed && (
         <div className="max-h-[40%] shrink-0 overflow-y-auto border-t border-border bg-surface px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-semibold text-foreground">{t("Carla's draft")}</p>
+            <p className="text-xs font-semibold text-foreground">{t("AIC OS's draft")}</p>
             {proposed.confidence != null && (
               <Badge>{t("Confidence {percent}%", { percent: Math.round(proposed.confidence * 100) })}</Badge>
             )}
@@ -409,7 +409,7 @@ export default function Thread({
             [
               ["reply", t("Reply (customer)")],
               ["note", t("Note (staff)")],
-              ["coach", t("Coach Carla (private)")],
+              ["coach", t("Coach AIC OS (private)")],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -479,7 +479,7 @@ export default function Thread({
             onClick={() => setFromDraftId(null)}
             className="mt-1 text-xs text-muted hover:text-foreground hover:underline"
           >
-            {t("Send as my own reply instead of Carla's edited draft")}
+            {t("Send as my own reply instead of AIC OS's edited draft")}
           </button>
         )}
       </div>
@@ -490,13 +490,13 @@ export default function Thread({
 function MessageBubble({ message: m, memberName }: { message: Message; memberName: (id: string | null) => string }) {
   const { t, locale } = useI18n();
   const author =
-    m.authorKind === "AGENT" ? "Carla" : m.authorKind === "USER" ? memberName(m.authorId) : "";
+    m.authorKind === "AGENT" ? "AIC OS" : m.authorKind === "USER" ? memberName(m.authorId) : "";
 
   if (m.direction === "INTERNAL") {
     return (
       <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-foreground">
         <p className="text-[11px] font-medium text-amber-800">
-          {m.kind === "COACHING" ? t("Coaching for Carla") : t("Staff note")}
+          {m.kind === "COACHING" ? t("Coaching for AIC OS") : t("Staff note")}
           {" · "}
           {t("Only staff can see this")}
           {author ? ` · ${author}` : ""}
