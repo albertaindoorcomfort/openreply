@@ -43,3 +43,6 @@ next-env.d.ts
 
 /app/generated/prisma
 .gstack/
+
+# scripts/ci_checks.sh output
+/ci-logs
