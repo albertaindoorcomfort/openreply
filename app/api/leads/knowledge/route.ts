@@ -14,7 +14,7 @@ const Entry = z.object({
   active: z.boolean().default(true),
 }).strict();
 
-// Approved business facts Carla may use. Only admins approve them.
+// Approved business facts AIC OS may use. Only admins approve them.
 export const PUT = route(async (request) => {
   const actor = await userActor(request, "ADMIN");
   const e = Entry.parse(await readJson(request));

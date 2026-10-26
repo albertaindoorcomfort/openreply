@@ -701,7 +701,7 @@ model Opportunity {
   @@index([contactId])
 }
 
-/// Carla's classify, summarise and next-action output for a conversation.
+/// AIC OS's classify, summarise and next-action output for a conversation.
 model Assessment {
   id             String    @id @default(cuid())
   workspaceId    String
@@ -725,7 +725,7 @@ model Assessment {
   @@index([conversationId, createdAt])
 }
 
-/// A human correction of something Carla produced. Evaluation input only.
+/// A human correction of something AIC OS produced. Evaluation input only.
 model Feedback {
   id             String         @id @default(cuid())
   workspaceId    String
@@ -766,8 +766,8 @@ model DuplicateCandidate {
   @@index([workspaceId, status])
 }
 
-/// Approved business facts Carla may use in replies (hours, booking, service area).
-/// Carla never states a business fact that is not here.
+/// Approved business facts AIC OS may use in replies (hours, booking, service area).
+/// AIC OS never states a business fact that is not here.
 model KnowledgeEntry {
   id               String   @id @default(cuid())
   workspaceId      String

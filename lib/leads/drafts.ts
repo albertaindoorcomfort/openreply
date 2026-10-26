@@ -37,7 +37,7 @@ async function lockConversation(tx: Tx, conversationId: string) {
 export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_:.-]{8,100}$/);
 
 /**
- * Carla (or a person) proposes a reply. Never sends. With an idempotency key a
+ * AIC OS (or a person) proposes a reply. Never sends. With an idempotency key a
  * retried proposal returns the first draft instead of replacing it.
  */
 export async function proposeDraft(actor: Actor, conversationId: string, input: z.input<typeof ProposeDraftSchema>, idempotencyKey?: string) {
@@ -108,7 +108,7 @@ interface Release {
 
 /**
  * The only path from a draft to a customer. In order: the conversation is
- * locked; the draft must still be PROPOSED; Carla must not be paused; nothing
+ * locked; the draft must still be PROPOSED; AIC OS must not be paused; nothing
  * may have arrived or gone out since the draft was written; the channel's reply
  * window and the contact's consent must allow it; no other send may be in
  * flight. Then the draft is claimed (SENDING) and the approval id stored under
@@ -258,7 +258,7 @@ export const HumanSendSchema = z
     body: z.string().trim().min(1).max(MAX_BODY),
     /** Client-generated per click. A repeat returns the first result instead of sending again. */
     idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,100}$/),
-    /** Set when the person is approving (and maybe editing) Carla's draft. */
+    /** Set when the person is approving (and maybe editing) AIC OS's draft. */
     fromDraftId: z.string().max(100).optional(),
     /** The newest message the person saw. Refused if the thread moved on since. */
     basedOnMessageId: z.string().max(100).nullable(),
@@ -288,7 +288,7 @@ export async function sendAsUser(actor: Actor & { id: string }, conversationId: 
       if (!source) throw new LeadError("DRAFT_NOT_PROPOSED", 409, "That draft is no longer open.");
       await tx.draft.update({ where: { id: source.id }, data: { status: "DISCARDED" } });
       if (source.body !== data.body) {
-        // An edit of Carla's draft is a correction worth learning from.
+        // An edit of AIC OS's draft is a correction worth learning from.
         await tx.feedback.create({
           data: {
             workspaceId: actor.workspaceId, targetKind: "DRAFT", targetId: source.id,

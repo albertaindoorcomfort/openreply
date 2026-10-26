@@ -347,7 +347,7 @@ describe.skipIf(!DATABASE_URL)("meetings on a real Postgres", () => {
     });
   });
 
-  describe("notes, transcripts and Carla", () => {
+  describe("notes, transcripts and AIC OS", () => {
     async function teamsMeeting() {
       relay.addContact({ id: "c1", primaryEmail: "jordan@example.com", displayName: "Jordan Lee", stageKey: "appointment" });
       const ev = graph.addEvent({

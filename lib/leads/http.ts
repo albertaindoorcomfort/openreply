@@ -45,7 +45,7 @@ const SERVICE_LIMIT_PER_MINUTE = Number(process.env.RELAY_KEY_RATE_LIMIT ?? 600)
 /**
  * Authenticates a service key and checks one scope. The workspace always comes
  * from the key. Agent work (drafts, assessments, handoffs) is attributed to
- * the agent named in x-agent-id, default Carla.
+ * the agent named in x-agent-id, default AIC OS.
  */
 export async function serviceActor(request: NextRequest, scope: Scope): Promise<ServiceActor> {
   const header = request.headers.get("authorization") ?? "";

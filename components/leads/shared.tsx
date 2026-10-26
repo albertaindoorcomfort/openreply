@@ -184,9 +184,9 @@ const LEVEL: Record<string, StaticMessageKey> = {
 
 const MODE: Record<string, StaticMessageKey> = {
   HUMAN: "Person replying",
-  SUPERVISED: "Carla drafts",
+  SUPERVISED: "AIC OS drafts",
   MANUAL_ONLY: "Manual only",
-  AUTONOMOUS: "Carla replies",
+  AUTONOMOUS: "AIC OS replies",
 };
 
 const INTENT: Record<string, StaticMessageKey> = {

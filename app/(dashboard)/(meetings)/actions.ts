@@ -190,7 +190,7 @@ export async function briefAction(_: ActionResult, form: FormData): Promise<Acti
   try {
     const b = await generateBrief(ctx.workspaceId, meeting.id, depsFor(meeting.connectionId));
     revalidatePath(`/meetings/${meeting.id}`);
-    return { ok: true, message: b.producer === "facts" ? "Brief ready (facts only; Carla's model is not connected)." : "Brief ready." };
+    return { ok: true, message: b.producer === "facts" ? "Brief ready (facts only; AIC OS's model is not connected)." : "Brief ready." };
   } catch (error) {
     return explain(error);
   }
@@ -275,7 +275,7 @@ export async function summarizeAction(_: ActionResult, form: FormData): Promise<
   try {
     const s = await summarizeMeeting(ctx.workspaceId, meeting.id, depsFor(meeting.connectionId));
     revalidatePath(`/meetings/${meeting.id}`);
-    return { ok: true, message: s.producer === "heuristic" ? "Summary drafted from marked lines (Carla's model is not connected). Review and correct it." : "Summary drafted. Review and correct it." };
+    return { ok: true, message: s.producer === "heuristic" ? "Summary drafted from marked lines (AIC OS's model is not connected). Review and correct it." : "Summary drafted. Review and correct it." };
   } catch (error) {
     return explain(error);
   }
@@ -297,7 +297,7 @@ export async function correctSummaryAction(_: ActionResult, form: FormData): Pro
       ctx.userId
     );
     revalidatePath(`/meetings/${s.meetingId}`);
-    return { ok: true, message: "Correction saved and kept as feedback for Carla's evaluation." };
+    return { ok: true, message: "Correction saved and kept as feedback for AIC OS's evaluation." };
   } catch (error) {
     return explain(error);
   }

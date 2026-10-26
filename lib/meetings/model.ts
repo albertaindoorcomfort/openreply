@@ -1,5 +1,5 @@
 /**
- * Carla's model access. Meetings never hold a provider key: completions go
+ * AIC OS's model access. Meetings never hold a provider key: completions go
  * through Apollo's gateway (OpenAI-compatible, text only), which meters
  * budget, enforces rate limits and audits the call. When the gateway is not
  * configured, callers fall back to deterministic logic and say so.

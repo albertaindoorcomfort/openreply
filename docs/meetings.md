@@ -1,6 +1,6 @@
 # Meetings and Outlook calendar
 
-Carla's meeting workspace: **Agenda**, **Calendar**, **Meetings** and **Notes**,
+AIC OS's meeting workspace: **Agenda**, **Calendar**, **Meetings** and **Notes**,
 on top of Microsoft 365 through Microsoft Graph. It books and moves Outlook
 meetings after checking free/busy, prepares briefs, keeps consented notes,
 summarizes, turns action items into lead tasks, and prepares follow-up drafts.
@@ -98,7 +98,7 @@ default); typed notes are kept.
   cannot be read, nothing is booked. Pending AIC bookings also hold their slot.
 - **Approval for anything a customer receives.** An invite, update or
   cancellation to an address outside `AIC_INTERNAL_DOMAINS` needs a person
-  clicking the button, or an Apollo approval id when Carla asks.
+  clicking the button, or an Apollo approval id when AIC OS asks.
 - **No duplicate events.** The meeting id is Graph's `transactionId`; a booking
   whose response was lost is claimed by the next sync.
 - **No silent overwrites.** Moves send `If-Match` with the last `changeKey`; an
@@ -108,10 +108,10 @@ default); typed notes are kept.
   acknowledged with 202 and processed after the response. Duplicates collapse;
   failures back off and retry; after 8 attempts a notification is dead and a
   full delta sync reconciles. Lifecycle events renew, recreate or resync.
-- **Corrections are feedback.** A corrected summary supersedes Carla's and is
+- **Corrections are feedback.** A corrected summary supersedes AIC OS's and is
   recorded with the original, then forwarded to the lead inbox feedback queue
   (`POST /feedback`, `feedback:write` scope) for evaluation. Nothing changes
-  Carla's prompts.
+  AIC OS's prompts.
 - **Follow-ups are drafts.** With an email conversation for the lead, the
   follow-up becomes a draft in the inbox (sent only after approval). Without
   one it is saved to the organizer's Outlook Drafts.

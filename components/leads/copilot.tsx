@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * The right pane of the lead inbox: what Carla made of the conversation,
- * suggested next steps, open tasks and a way to correct her assessment.
+ * The right pane of the lead inbox: what AIC OS made of the conversation,
+ * suggested next steps, open tasks and a way to correct its assessment.
  */
 
 import Link from "next/link";
@@ -104,7 +104,7 @@ export default function Copilot({
         {error && <p role="alert" className="text-xs text-error">{error}</p>}
 
         {!a ? (
-          <p className="text-sm text-muted">{t("Carla has not assessed this conversation yet.")}</p>
+          <p className="text-sm text-muted">{t("AIC OS has not assessed this conversation yet.")}</p>
         ) : (
           <section className="space-y-2">
             <p className="whitespace-pre-wrap text-sm text-foreground">{a.summary}</p>
@@ -137,7 +137,7 @@ export default function Copilot({
         )}
 
         <button type="button" disabled={busy} onClick={() => void askCarla()} className={buttonClass}>
-          {t("Ask Carla again")}
+          {t("Ask AIC OS again")}
         </button>
 
         {a?.nextActions && a.nextActions.length > 0 && (
@@ -201,7 +201,7 @@ export default function Copilot({
   );
 }
 
-/** Sends a correction of Carla's assessment. Only changed fields are sent. */
+/** Sends a correction of AIC OS's assessment. Only changed fields are sent. */
 function CorrectionForm({
   assessment,
   onDone,

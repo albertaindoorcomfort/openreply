@@ -3,7 +3,7 @@
 /**
  * Business facts
  *
- * The approved facts Carla may state to customers (hours, service area,
+ * The approved facts AIC OS may state to customers (hours, service area,
  * booking, emergencies, sign-off). Everyone can read them; admins edit.
  */
 
@@ -50,9 +50,9 @@ export default function KnowledgePage() {
 
   return (
     <div className="space-y-4">
-      <LeadsHeader title={t("Business facts Carla may use")} />
+      <LeadsHeader title={t("Business facts AIC OS may use")} />
       <p className="max-w-2xl text-sm text-muted">
-        {t("Carla only states facts listed here. If a customer asks something that is not covered, she leaves it to a person.")}
+        {t("AIC OS only states facts listed here. If a customer asks something that is not covered, it leaves it to a person.")}
       </p>
       {!isAdmin && members.length > 0 && (
         <p className="text-sm text-muted">{t("Only admins can change these facts.")}</p>
@@ -164,7 +164,7 @@ function EntryForm({
         )}
         <label className="ml-auto flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={active} disabled={!canEdit} onChange={(e) => setActive(e.target.checked)} />
-          {t("Carla may use this")}
+          {t("AIC OS may use this")}
         </label>
       </div>
       <label htmlFor={`${idBase}-title`} className="sr-only">
@@ -189,7 +189,7 @@ function EntryForm({
         readOnly={!canEdit}
         rows={3}
         maxLength={4000}
-        placeholder={t("Write the fact exactly as Carla may say it.")}
+        placeholder={t("Write the fact exactly as AIC OS may say it.")}
         className={`${inputClass} w-full resize-y`}
       />
       {isNew && key && !keyValid && (

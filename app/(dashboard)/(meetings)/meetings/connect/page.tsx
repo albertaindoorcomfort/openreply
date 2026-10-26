@@ -61,7 +61,7 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
       ) : (
         <div className="space-y-3 text-sm">
           <p>
-            Connecting lets Carla read your Outlook calendar and free/busy, book and move meetings you approve, find Teams meeting details, and save follow-up drafts
+            Connecting lets AIC OS read your Outlook calendar and free/busy, book and move meetings you approve, find Teams meeting details, and save follow-up drafts
             to your Drafts folder. Nothing is sent to a customer without your approval.
           </p>
           <a href="/api/microsoft/connect" className="inline-block rounded bg-foreground px-3 py-1.5 text-background hover:opacity-90">

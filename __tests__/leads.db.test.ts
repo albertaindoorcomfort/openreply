@@ -133,7 +133,7 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
   beforeAll(async () => {
     process.env.RELAY_GRANT_SECRET = SECRET;
     process.env.LEADS_EMAIL_SERVER = "smtp://unused";
-    process.env.LEADS_EMAIL_FROM = "Carla <carla@aic.test>";
+    process.env.LEADS_EMAIL_FROM = "AIC OS <carla@aic.test>";
     sql = new Client({ connectionString: DATABASE_URL });
     await sql.connect();
     await sql.query(`CREATE SCHEMA "${schema}"`);
@@ -280,7 +280,7 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("stops Carla when a person takes over, and lets the person reply", async () => {
+  it("stops AIC OS when a person takes over, and lets the person reply", async () => {
     const lead = await ingestInbound(A, email({}, "takeover@example.com"));
     const draft = await draftFor(lead.conversationId);
     await takeOver(USER_A, lead.conversationId);
@@ -359,7 +359,7 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
     expect(sent).toHaveLength(1);
   });
 
-  // ── Carla ────────────────────────────────────────────────────────────────
+  // ── AIC OS ────────────────────────────────────────────────────────────────
 
   it("classifies, scores, drafts from approved facts and creates follow-ups", async () => {
     const lead = await ingestInbound(A, email({ from: { displayName: "Morgan Hill", firstName: "Morgan", identities: [{ kind: "EMAIL", value: "morgan@example.com" }, { kind: "PHONE", value: "4035550144" }] } }));

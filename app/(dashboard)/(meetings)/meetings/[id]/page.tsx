@@ -117,7 +117,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                 name="body"
                 rows={5}
                 required
-                placeholder={"What happened. Mark lines with Action: or Decision: and Carla picks them up."}
+                placeholder={"What happened. Mark lines with Action: or Decision: and AIC OS picks them up."}
                 aria-label="New note"
                 className={field}
               />
@@ -206,7 +206,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                   </div>
                 ) : null}
                 <p className="text-xs text-muted">
-                  {summary.authorKind === "USER" ? "Corrected by a person" : summary.producer === "heuristic" ? "Drafted from marked lines" : "Drafted by Carla"}
+                  {summary.authorKind === "USER" ? "Corrected by a person" : summary.producer === "heuristic" ? "Drafted from marked lines" : "Drafted by AIC OS"}
                 </p>
                 <details>
                   <summary className="cursor-pointer text-sm">Correct this summary</summary>
@@ -215,7 +215,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                     <textarea name="summary" defaultValue={summary.summary} rows={4} aria-label="Summary" className={field} />
                     <textarea name="decisions" defaultValue={decisions.join("\n")} rows={3} aria-label="Decisions, one per line" placeholder="Decisions, one per line" className={field} />
                     <textarea name="actionItems" defaultValue={items.map((a) => a.title).join("\n")} rows={3} aria-label="Action items, one per line" placeholder="Action items, one per line" className={field} />
-                    <input name="reason" placeholder="What was wrong (helps Carla improve)" aria-label="Reason" className={field} />
+                    <input name="reason" placeholder="What was wrong (helps AIC OS improve)" aria-label="Reason" className={field} />
                   </ActionForm>
                 </details>
               </div>
@@ -260,7 +260,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
                 </p>
               </>
             ) : (
-              <p className="mb-2 text-sm text-muted">Carla gathers the lead, open tasks, deals, past meetings and recent email.</p>
+              <p className="mb-2 text-sm text-muted">AIC OS gathers the lead, open tasks, deals, past meetings and recent email.</p>
             )}
             <ActionForm action={briefAction} submitLabel={brief ? "Refresh brief" : "Prepare brief"} pendingLabel="Preparing…" variant="secondary">
               {hidden}
@@ -317,7 +317,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
               {meeting.events.map((e) => (
                 <li key={e.id}>
                   {formatDay(e.occurredAt, tz).split(",").slice(1).join(",")} {formatTime(e.occurredAt, tz)} · {e.type.replace("meeting.", "").replaceAll("_", " ")}
-                  {e.actorKind === "AGENT" ? " (Carla)" : e.actorKind === "SYSTEM" ? " (sync)" : ""}
+                  {e.actorKind === "AGENT" ? " (AIC OS)" : e.actorKind === "SYSTEM" ? " (sync)" : ""}
                 </li>
               ))}
             </ol>
