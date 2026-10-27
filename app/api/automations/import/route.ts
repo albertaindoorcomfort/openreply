@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
+import {
+  INTENT_DESCRIPTION_REQUIRED,
+  isIntentConfigValid,
+  normalizeIntentThreshold,
+} from "@/lib/campaigns/intent-validation";
 import { getWorkspaceInstagramAccount } from "@/lib/instagram-accounts";
 import { generateReportShareSlug } from "@/lib/reports/share";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
@@ -19,8 +24,16 @@ const campaignSchema = z.object({
   publicReplyMessage: z.string().max(1000).optional().nullable(),
   trackedUrl: z.string().optional().nullable(),
   wholeWordMatch: z.boolean().optional().default(true),
+  intentGateEnabled: z.boolean().optional().default(false),
+  intentDescription: z.string().max(500).optional().nullable(),
+  intentThreshold: z.number().transform(normalizeIntentThreshold).pipe(z.number().min(0.5).max(0.95)).optional().default(0.7),
   isActive: z.boolean().optional().default(true),
-});
+})
+  // The gate has nothing to judge against without a description.
+  .refine(isIntentConfigValid, {
+    message: INTENT_DESCRIPTION_REQUIRED,
+    path: ["intentDescription"],
+  });
 
 const importSchema = z.object({
   instagramAccountId: z.string().min(1),
@@ -100,6 +113,11 @@ export async function POST(request: NextRequest) {
         publicReplyMessage: publicReply ? publicReply.slice(0, 1000) : null,
         isActive: campaign.isActive,
         wholeWordMatch: campaign.wholeWordMatch,
+        intentGateEnabled: campaign.intentGateEnabled,
+        intentDescription: campaign.intentGateEnabled
+          ? campaign.intentDescription?.trim() || null
+          : null,
+        intentThreshold: campaign.intentThreshold,
         workspaceId: context.workspaceId,
         instagramAccountId: account.id,
         reportShareSlug: generateReportShareSlug(),

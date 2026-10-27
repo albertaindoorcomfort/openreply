@@ -3,6 +3,8 @@ import { createCarlaWorker } from "@/lib/leads/queue";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { attachPendingNextReels } from "@/lib/automation/attach-next-reel";
+import { prisma } from "@/lib/db/client";
+import { getJudgmentProvider } from "@/lib/matching/judgment-provider";
 import os from "node:os";
 
 const worker = createDMWorker();
@@ -17,6 +19,29 @@ const POLL_INTERVAL_MS = Number(
 );
 
 console.log("[DM Worker] Started");
+
+// Gated campaigns with no TypeSafe key are closed, not broken: nothing sends
+// and nothing crashes. Say so once at boot so the silence is explainable.
+// The provider is read once at boot and memoized, so a key added later needs a
+// worker restart.
+async function warnIfIntentGateUnconfigured() {
+  try {
+    if (getJudgmentProvider()) return;
+    const gated = await prisma.automation.count({
+      where: { isActive: true, intentGateEnabled: true },
+    });
+    if (gated === 0) return;
+    const message = `${gated} active campaign(s) use the intent gate but TYPESAFE_API_KEY is not set; those campaigns will not send`;
+    console.warn(`[DM Worker] ${message}`);
+    await prisma.operationalEvent.create({
+      data: { source: "WORKER", level: "WARNING", message, payload: { gatedCampaigns: gated } },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[DM Worker] Intent gate configuration check failed:", message);
+  }
+}
+void warnIfIntentGateUnconfigured();
 
 async function heartbeat() {
   try {

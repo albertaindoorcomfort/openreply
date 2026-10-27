@@ -38,7 +38,8 @@ import {
   hasInstagramCredentials,
   type InstagramContext,
 } from "@/lib/instagram/provider";
-import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import { resolveCampaignMatches } from "./campaign-matching";
+import { getJudgmentProvider } from "@/lib/matching/judgment-provider";
 import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
@@ -310,19 +311,19 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     orderBy: { createdAt: "asc" },
   });
 
-  for (const automation of automations) {
-    // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
-    const matchResult = automation.matchAnyWord
-      ? { matched: true, matchedKeyword: null }
-      : matchKeywords(
-          commentText,
-          automation.keywords,
-          automation.wholeWordMatch
-        );
+  // Reach (keywords) and meaning (intent gate) for every campaign at once,
+  // with each gate verdict decided once and afterwards read from its DmLog
+  // row. Gate rejections are recorded there; only campaigns that should act
+  // come back in `matched`.
+  const { matched, deferredError } = await resolveCampaignMatches({
+    source: { dedupeId: commentId, text: commentText, commenterId, commenterName },
+    automations,
+    provider: getJudgmentProvider(),
+  });
 
-    if (!matchResult.matched) {
-      continue;
-    }
+  for (const automation of automations) {
+    const matchResult = matched.get(automation.id);
+    if (!matchResult) continue;
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -350,6 +351,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // already sent but whose public reply never posted (e.g. it hit a rate
     // limit) must still come back so the public reply can be retried.
     if (existingLog?.status === "SKIPPED_PLAN_LIMIT") continue;
+    // Only reachable through a race with a concurrent job for the same comment.
+    if (existingLog?.status === "SKIPPED_NO_MATCH") continue;
     if (
       !needsDm &&
       (alreadyPublicReplied || existingLog?.publicReplyDeliveryUnconfirmed || !automation.publicReplyEnabled)
@@ -374,6 +377,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commentText,
           commentId,
           matchedKeyword: matchResult.matchedKeyword,
+          intentProbability: matchResult.intentProbability,
           status: "FAILED",
           errorMessage: "No Instagram access token available",
         },
@@ -408,6 +412,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commentText,
           commentId,
           matchedKeyword: matchResult.matchedKeyword,
+          intentProbability: matchResult.intentProbability,
           status: "FAILED",
           errorMessage: "Failed to decrypt Instagram access token",
         },
@@ -427,6 +432,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         instagramAccountId: automation.instagramAccountId,
         commenterId, commenterName, commentText, commentId,
         matchedKeyword: matchResult.matchedKeyword,
+        intentProbability: matchResult.intentProbability,
         status: "PENDING",
       },
       update: {},
@@ -784,6 +790,12 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       throw sendError;
     }
   }
+
+  // The gate provider was down. Ungated campaigns have been served above;
+  // failing the job now makes BullMQ retry it so the gated ones get judged.
+  // The retry cannot repeat a send: the per-leg claims in DmLog skip every
+  // campaign that already acted.
+  if (deferredError) throw deferredError;
 }
 
 async function sendPostbackOnce({
@@ -1292,16 +1304,18 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
 
   const dedupeId = `dm:${messageId}`;
 
-  for (const automation of automations) {
-    const matchResult = automation.matchAnyWord
-      ? { matched: true, matchedKeyword: null }
-      : matchKeywords(
-          messageText,
-          automation.keywords,
-          automation.wholeWordMatch
-        );
+  // Same reach-then-meaning resolution as processComment: keywords plus the
+  // intent gate, with gate rejections recorded in DmLog and only campaigns
+  // that should act returned in `matched`.
+  const { matched, deferredError } = await resolveCampaignMatches({
+    source: { dedupeId, text: messageText, commenterId: senderId, commenterName: null },
+    automations,
+    provider: getJudgmentProvider(),
+  });
 
-    if (!matchResult.matched) continue;
+  for (const automation of automations) {
+    const matchResult = matched.get(automation.id);
+    if (!matchResult) continue;
 
     const existingLog = await prisma.dmLog.findUnique({
       where: {
@@ -1313,10 +1327,12 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     });
 
     // Already replied to this message (or deliberately skipped it) — a retry
-    // of the job must not send a second DM.
+    // of the job must not send a second DM. SKIPPED_NO_MATCH is only reachable
+    // through a race with a concurrent job that gate-rejected it first.
     if (
       existingLog?.status === "SENT" ||
       existingLog?.status === "SKIPPED_PLAN_LIMIT" ||
+      existingLog?.status === "SKIPPED_NO_MATCH" ||
       existingLog?.dmDeliveryUnconfirmed
     ) {
       continue;
@@ -1330,6 +1346,7 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       commentText: messageText,
       commentId: dedupeId,
       matchedKeyword: matchResult.matchedKeyword,
+      intentProbability: matchResult.intentProbability,
     };
 
     if (!hasInstagramCredentials(automation.instagramAccount)) {
@@ -1524,6 +1541,12 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
       throw error;
     }
   }
+
+  // The gate provider was down. Ungated campaigns have been served above;
+  // failing the job makes BullMQ retry it so the gated ones get judged. The
+  // retry cannot repeat a send: the SENT/unconfirmed short-circuit above skips
+  // every campaign that already replied to this message.
+  if (deferredError) throw deferredError;
 }
 
 async function dispatchJob(job: Job<DmQueueJob>): Promise<void> {

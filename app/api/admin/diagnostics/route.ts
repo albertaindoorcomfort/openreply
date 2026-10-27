@@ -42,14 +42,12 @@ export async function GET() {
     prisma.dmLog.findMany({
       where: {
         workspaceId,
-        status: {
-          in: [
-            "FAILED",
-            "SKIPPED_RATE_LIMIT",
-            "SKIPPED_PLAN_LIMIT",
-            "SKIPPED_NO_MATCH",
-          ],
-        },
+        OR: [
+          { status: { in: ["FAILED", "SKIPPED_RATE_LIMIT", "SKIPPED_PLAN_LIMIT"] } },
+          // A judged intent rejection is the gate working; only a closure
+          // (the gate could not run, so no probability) is a problem.
+          { status: "SKIPPED_NO_MATCH", intentProbability: null },
+        ],
       },
       orderBy: { updatedAt: "desc" },
       take: 10,

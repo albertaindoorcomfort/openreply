@@ -16,6 +16,8 @@ const {
   mockQueueAdd,
   mockReserveWorkspaceDMSend,
   mockReleaseWorkspaceDMReservation,
+  mockGetJudgmentProvider,
+  mockSendCommentReply,
 } = vi.hoisted(() => ({
   mockPrisma: {
     zernioConnection: { findUnique: vi.fn() },
@@ -27,6 +29,7 @@ const {
     dmLog: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -53,6 +56,8 @@ const {
   mockQueueAdd: vi.fn(),
   mockReserveWorkspaceDMSend: vi.fn(),
   mockReleaseWorkspaceDMReservation: vi.fn(),
+  mockGetJudgmentProvider: vi.fn(),
+  mockSendCommentReply: vi.fn(),
 }));
 
 vi.mock("@/lib/db/client", () => ({
@@ -67,7 +72,7 @@ vi.mock("@/lib/meta/client", () => ({
   sendDirectMessageWithButton: mockSendDirectMessageWithButton,
   sendDirectMessage: mockSendDirectMessage,
   sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
-  sendCommentReply: vi.fn(),
+  sendCommentReply: mockSendCommentReply,
   MetaApiError: class MetaApiError extends Error {
     code: number;
     constructor(
@@ -95,6 +100,11 @@ vi.mock("@/lib/meta/oauth", () => ({
 
 vi.mock("@/lib/utils/keyword-matcher", () => ({
   matchKeywords: mockMatchKeywords,
+}));
+
+vi.mock("@/lib/matching/judgment-provider", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/matching/judgment-provider")>()),
+  getJudgmentProvider: mockGetJudgmentProvider,
 }));
 
 vi.mock("@/lib/utils/rate-limiter", () => ({
@@ -139,6 +149,11 @@ vi.mock("bullmq", () => {
 
 import { MetaApiError, RateLimitError } from "@/lib/meta/client";
 import { createDMWorker } from "../lib/queue/dm-worker";
+import {
+  createFakeJudgmentProvider,
+  IntentJudgmentRejectedError,
+  IntentJudgmentUnavailableError,
+} from "../lib/matching/judgment-provider";
 import { getRedisConnection } from "@/lib/queue/client";
 
 const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
@@ -152,6 +167,9 @@ const mockAutomation = {
   dmMessage: "Hey {username}! Here is the link: https://example.com",
   isActive: true,
   wholeWordMatch: true,
+  intentGateEnabled: false,
+  intentDescription: null,
+  intentThreshold: 0.7,
   matchAnyPost: false,
   matchAnyWord: false,
   openingDmEnabled: false,
@@ -227,6 +245,8 @@ beforeEach(() => {
   mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
   mockPrisma.automation.findFirst.mockResolvedValue(null);
   mockPrisma.dmLog.findUnique.mockResolvedValue(null);
+  mockPrisma.dmLog.findMany.mockReset().mockResolvedValue([]);
+  mockGetJudgmentProvider.mockReset().mockReturnValue(null);
   mockPrisma.dmLog.create.mockResolvedValue({});
   // Two different lookups share findFirst: the cross-campaign private-reply
   // check (keyed on status SENT) and the postback's name lookup. Only the
@@ -1755,4 +1775,276 @@ it("retains the public reply claim if sending succeeded but its log write failed
   await process({ ...createMockJob(), id: "next-poll" });
   expect(sendCommentReply).toHaveBeenCalledTimes(1);
   expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+});
+
+describe("DM Worker — intent gate on comments", () => {
+  const gatedAutomation = {
+    ...mockAutomation,
+    id: "gated_1",
+    keywords: [],
+    matchAnyWord: true,
+    intentGateEnabled: true,
+    intentDescription: "a free furnace tune-up booking link",
+    intentThreshold: 0.7,
+  };
+
+  it("sends when the gate passes and stores the probability", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(createFakeJudgmentProvider({ gated_1: 0.91 }));
+
+    await getProcessor()(createMockJob());
+
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: "PENDING", intentProbability: 0.91 }),
+      })
+    );
+  });
+
+  it("writes SKIPPED_NO_MATCH with the probability and sends nothing when the gate rejects", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(createFakeJudgmentProvider({ gated_1: 0.12 }));
+
+    await getProcessor()(createMockJob());
+
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith({
+      where: { automationId_commentId: { automationId: "gated_1", commentId: "comment_555" } },
+      create: expect.objectContaining({
+        status: "SKIPPED_NO_MATCH",
+        intentProbability: 0.12,
+        commentText: "I want the LINK!",
+      }),
+      update: {},
+    });
+  });
+
+  it("is closed and visible when no TYPESAFE_API_KEY is configured", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(null);
+
+    await getProcessor()(createMockJob());
+
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          status: "SKIPPED_NO_MATCH",
+          intentProbability: null,
+          errorMessage: "Intent gate closed: no usable TypeSafe key is configured",
+        }),
+      })
+    );
+  });
+
+  it("does not re-judge a comment this campaign already rejected", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedAutomation]);
+    mockPrisma.dmLog.findMany.mockResolvedValue([
+      { automationId: "gated_1", status: "SKIPPED_NO_MATCH", matchedKeyword: null, intentProbability: 0.1 },
+    ]);
+    const provider = createFakeJudgmentProvider({ gated_1: 0.99 });
+    mockGetJudgmentProvider.mockReturnValue(provider);
+
+    await getProcessor()(createMockJob());
+
+    expect(provider.calls).toHaveLength(0);
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+  });
+
+  it("fails the job (so BullMQ retries) and sends nothing when the provider is unavailable", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(
+      createFakeJudgmentProvider(() => {
+        throw new IntentJudgmentUnavailableError("TypeSafe request failed: 503");
+      })
+    );
+
+    await expect(getProcessor()(createMockJob())).rejects.toThrow("503");
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("completes the job, sends nothing gated and records a closure when the provider rejects the key", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(
+      createFakeJudgmentProvider(() => {
+        throw new IntentJudgmentRejectedError("TypeSafe rejected the request (AuthenticationError: 401)");
+      })
+    );
+
+    await expect(getProcessor()(createMockJob())).resolves.not.toThrow();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { automationId_commentId: { automationId: "gated_1", commentId: "comment_555" } },
+        create: expect.objectContaining({
+          status: "SKIPPED_NO_MATCH",
+          intentProbability: null,
+          errorMessage:
+            "Intent gate closed: TypeSafe refused the request — check the API key, account and model setting",
+        }),
+      })
+    );
+  });
+
+  it("still serves an ungated campaign during a provider outage, then fails the job", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([mockAutomation, gatedAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(
+      createFakeJudgmentProvider(() => {
+        throw new IntentJudgmentUnavailableError("TypeSafe request failed: 503");
+      })
+    );
+
+    await expect(getProcessor()(createMockJob())).rejects.toThrow("503");
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    const gatedWrites = mockPrisma.dmLog.upsert.mock.calls.filter(
+      ([args]) => args.where.automationId_commentId.automationId === "gated_1"
+    );
+    expect(gatedWrites).toHaveLength(0);
+  });
+
+  it("posts no public reply for a comment the gate rejects", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...gatedAutomation, publicReplyEnabled: true, publicReplyMessage: "Check your DMs!" },
+    ]);
+    mockGetJudgmentProvider.mockReturnValue(createFakeJudgmentProvider({ gated_1: 0.05 }));
+
+    await getProcessor()(createMockJob());
+
+    expect(mockSendCommentReply).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
+
+  it("leaves a non-gated campaign untouched alongside a gated one", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([mockAutomation, gatedAutomation]);
+    const provider = createFakeJudgmentProvider({ gated_1: 0.1 });
+    mockGetJudgmentProvider.mockReturnValue(provider);
+
+    await getProcessor()(createMockJob());
+
+    // Keyword campaign sends; gated one is rejected. One private reply total.
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { automationId_commentId: { automationId: "gated_1", commentId: "comment_555" } },
+        create: expect.objectContaining({ status: "SKIPPED_NO_MATCH", intentProbability: 0.1 }),
+      })
+    );
+    expect(provider.calls).toHaveLength(1);
+    expect(Object.keys(provider.calls[0].questions)).toEqual(["gated_1"]);
+  });
+});
+
+describe("DM Worker — intent gate on inbound DMs", () => {
+  const gatedDmAutomation = {
+    ...mockAutomation,
+    id: "gated_dm",
+    keywords: [],
+    matchAnyWord: true,
+    dmTriggerEnabled: true,
+    intentGateEnabled: true,
+    intentDescription: "a free furnace tune-up booking link",
+    intentThreshold: 0.7,
+  };
+  const messageJob = {
+    name: "process-message",
+    data: {
+      instagramAccountId: "ig_456",
+      messageId: "mid_abc",
+      messageText: "do you service Airdrie?",
+      senderId: "sender_1",
+    },
+    id: "msg_job_1",
+    attemptsMade: 0,
+  };
+
+  function expectNothingSent() {
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithLinkButton).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  }
+
+  it("writes SKIPPED_NO_MATCH and sends nothing when the gate rejects", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedDmAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(createFakeJudgmentProvider({ gated_dm: 0.3 }));
+
+    await getProcessor()(messageJob);
+
+    expectNothingSent();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith({
+      where: { automationId_commentId: { automationId: "gated_dm", commentId: "dm:mid_abc" } },
+      create: expect.objectContaining({
+        status: "SKIPPED_NO_MATCH",
+        intentProbability: 0.3,
+        commentText: "do you service Airdrie?",
+      }),
+      update: {},
+    });
+  });
+
+  it("sends the DM and stores the probability when the gate passes", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedDmAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(createFakeJudgmentProvider({ gated_dm: 0.9 }));
+
+    await getProcessor()(messageJob);
+
+    expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { automationId_commentId: { automationId: "gated_dm", commentId: "dm:mid_abc" } },
+        create: expect.objectContaining({ status: "SENT", intentProbability: 0.9 }),
+      })
+    );
+  });
+
+  it("does not re-judge a message this campaign already rejected", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedDmAutomation]);
+    mockPrisma.dmLog.findMany.mockResolvedValue([
+      { automationId: "gated_dm", status: "SKIPPED_NO_MATCH", matchedKeyword: null, intentProbability: 0.1 },
+    ]);
+    const provider = createFakeJudgmentProvider({ gated_dm: 0.99 });
+    mockGetJudgmentProvider.mockReturnValue(provider);
+
+    await getProcessor()(messageJob);
+
+    expect(provider.calls).toHaveLength(0);
+    expectNothingSent();
+    expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+  });
+
+  it("fails the job and writes nothing when the provider is unavailable", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([gatedDmAutomation]);
+    mockGetJudgmentProvider.mockReturnValue(
+      createFakeJudgmentProvider(() => {
+        throw new IntentJudgmentUnavailableError("TypeSafe request failed: 503");
+      })
+    );
+
+    await expect(getProcessor()(messageJob)).rejects.toThrow("503");
+    expectNothingSent();
+    expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+  });
+
+  it("still serves an ungated DM-trigger campaign during an outage, then fails the job", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...mockAutomation, id: "plain_dm", dmTriggerEnabled: true },
+      gatedDmAutomation,
+    ]);
+    mockGetJudgmentProvider.mockReturnValue(
+      createFakeJudgmentProvider(() => {
+        throw new IntentJudgmentUnavailableError("TypeSafe request failed: 503");
+      })
+    );
+
+    await expect(getProcessor()(messageJob)).rejects.toThrow("503");
+    expect(mockSendDirectMessage).toHaveBeenCalledTimes(1);
+    const gatedWrites = mockPrisma.dmLog.upsert.mock.calls.filter(
+      ([args]) => args.where.automationId_commentId.automationId === "gated_dm"
+    );
+    expect(gatedWrites).toHaveLength(0);
+  });
 });

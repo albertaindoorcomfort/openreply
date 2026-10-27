@@ -245,10 +245,15 @@ async function sweepCampaign({
       select: {
         commentId: true, status: true, attempts: true, errorMessage: true,
         dmDeliveryUnconfirmed: true, publicReplySentAt: true,
-        publicReplyDeliveryUnconfirmed: true,
+        publicReplyDeliveryUnconfirmed: true, intentProbability: true,
       },
     });
     const handledSet = new Set(logs.filter((log) => {
+      // The intent gate judged this comment and turned it away: neither a DM
+      // nor a public reply is owed, so it is handled whatever the campaign
+      // posts. A closure (no probability — the gate could not run) is left
+      // unhandled on purpose, so the comment is judged once the key exists.
+      if (log.status === "SKIPPED_NO_MATCH") return log.intentProbability !== null;
       const dmStopped = log.status === "SENT" || log.status === "SKIPPED_PLAN_LIMIT" ||
         log.dmDeliveryUnconfirmed || log.attempts >= MAX_COMMENT_SEND_ATTEMPTS ||
         (log.status === "FAILED" && hasLegacyUnconfirmedDelivery(log.errorMessage));

@@ -51,6 +51,16 @@ export function getMetaGraphApiVersion(): string {
 }
 
 /**
+ * Optional TypeSafe key for the campaign intent gate. Absence is a valid
+ * configuration — gated campaigns are simply closed — so this returns null
+ * instead of throwing like requireEnv().
+ */
+export function getTypeSafeApiKey(): string | null {
+  const value = process.env.TYPESAFE_API_KEY?.trim();
+  return value ? value : null;
+}
+
+/**
  * The public demo, and the only host where sign-in is blocked. This repo is
  * something other people clone and deploy; a self-hoster's own domain must
  * never match this and must never be blocked from logging in — that's the

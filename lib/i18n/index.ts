@@ -33,6 +33,7 @@ const labels: Record<string, StaticMessageKey> = {
   SKIPPED_RATE_LIMIT: "Rate limited",
   SKIPPED_PLAN_LIMIT: "Plan limit",
   SKIPPED_DEDUP: "Dedup",
+  SKIPPED_NO_MATCH: "No match",
   OWNER: "Owner",
   ADMIN: "Admin",
   MEMBER: "Member",
