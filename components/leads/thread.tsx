@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/provider";
+import { recordings } from "@/lib/leads/recordings";
 import {
   api,
   ApiError,
@@ -528,6 +529,16 @@ function MessageBubble({ message: m, memberName }: { message: Message; memberNam
             {m.kind === "VOICEMAIL" ? t("Voicemail") : t("Call transcript")}
           </p>
         )}
+        {recordings(m.attachments).map((r) => (
+          <audio
+            key={r.index}
+            controls
+            preload="none"
+            aria-label={t("Call recording")}
+            className="mb-2 w-full max-w-sm"
+            src={`/api/leads/messages/${encodeURIComponent(m.id)}/recording?i=${r.index}`}
+          />
+        ))}
         <p className="whitespace-pre-wrap break-words">{m.body}</p>
         <p className={`mt-1 text-[10px] ${outbound ? "text-white/70" : "text-zinc-500"}`}>
           {author ? `${author} · ` : ""}
