@@ -103,6 +103,8 @@ Humans sending from the inbox UI use their session, a client-generated `idempote
 
 `POST /api/forms/<form key>` accepts JSON or a plain HTML form post: `name` (or `firstName`, `lastName`), `email`, `phone`, `company`, `message`, `subject`, `consent` (`on` when a marketing opt-in box is ticked), `page`, `utm_source`, `utm_medium`, `utm_campaign`, `campaign_ref`, `submission_id`, and a hidden honeypot field `website` that must stay empty. A form key holds only `forms:submit`, so it is safe in page source. 10 posts per IP per minute. `?redirect=` is honoured only for hosts in `LEADS_FORM_REDIRECT_HOSTS`.
 
+`POST /api/forms/google-ads` is the webhook for Google Ads lead forms. In the form's webhook settings, the URL is this route and the key is a `forms:submit` key; Google sends it as `google_key` in the body, so the URL holds no secret. Contact columns become the contact, other answers become the message, and the form, campaign, ad group and click id become the source detail. Google's test leads (`is_test`) check the key and store nothing. A retry of the same `lead_id` is stored once. Wrong keys get 401, and a stored lead gets 200, which is the only answer Google treats as delivered.
+
 ## Staff API (signed-in users)
 
 `/api/leads/*` serves the inbox UI with the same rules: `today`, `conversations` (+ `/:id`, `/:id/actions` for takeover, resume, lock, assign, note, coach, assist, close, `/:id/send`), `drafts/:id` (discard), `contacts` (+ merge, restore, consent), `duplicates/:id`, `board`, `opportunities/:id`, `tasks`, `feedback`, `knowledge`, `members`. Writes require a same-origin request.
