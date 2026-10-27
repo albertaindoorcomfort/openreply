@@ -21,6 +21,9 @@ describe("call recordings in the inbox", () => {
   it("follows the signed link only onto the provider's storage", () => {
     const r2 = "https://94bdb67bb98da30b06bdd917725c037d.r2.cloudflarestorage.com/rec/abc.wav?X-Amz-Signature=s";
     expect(signedStorageUrl(r2)).toBe(r2);
+    const bucket = "https://hipaa-recordings.94bdb67bb98da30b06bdd917725c037d.r2.cloudflarestorage.com/abc.wav?X-Amz-Signature=s";
+    expect(signedStorageUrl(bucket)).toBe(bucket);
+    expect(signedStorageUrl("https://evil94bdb67bb98da30b06bdd917725c037d.r2.cloudflarestorage.com/abc.wav")).toBeNull();
     expect(signedStorageUrl("https://storage.vapi.ai/abc.wav")).toBe("https://storage.vapi.ai/abc.wav");
     expect(signedStorageUrl("https://other.r2.cloudflarestorage.com/abc.wav")).toBeNull();
     expect(signedStorageUrl("http://storage.vapi.ai/abc.wav")).toBeNull();

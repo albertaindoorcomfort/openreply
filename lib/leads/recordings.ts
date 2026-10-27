@@ -18,7 +18,7 @@ export function playableUrl(url: string): string | null {
   }
 }
 
-// The provider's signed links point at its own storage: its R2 account or its own domain.
+// The provider's signed links point at its own storage: its R2 account (live links use a bucket subdomain, hipaa-recordings.<account>) or its own domain.
 const VAPI_R2_HOST = "94bdb67bb98da30b06bdd917725c037d.r2.cloudflarestorage.com";
 
 /** Whether a signed link the provider redirected to is on its own storage. */
@@ -27,7 +27,7 @@ export function signedStorageUrl(location: string | null): string | null {
   try {
     const u = new URL(location);
     const host = u.hostname;
-    return u.protocol === "https:" && (host === VAPI_R2_HOST || host === "vapi.ai" || host.endsWith(".vapi.ai")) ? u.toString() : null;
+    return u.protocol === "https:" && (host === VAPI_R2_HOST || host.endsWith(`.${VAPI_R2_HOST}`) || host === "vapi.ai" || host.endsWith(".vapi.ai")) ? u.toString() : null;
   } catch {
     return null;
   }
