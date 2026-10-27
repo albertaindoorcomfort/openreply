@@ -63,6 +63,7 @@ import { POST as eventsPOST } from "../app/api/relay/v1/events/route";
 import { POST as sendPOST } from "../app/api/relay/v1/drafts/[id]/send/route";
 import { GET as conversationGET } from "../app/api/relay/v1/conversations/[id]/route";
 import { POST as formPOST } from "../app/api/forms/[key]/route";
+import { POST as googleAdsPOST } from "../app/api/forms/google-ads/route";
 import { POST as actionsPOST } from "../app/api/leads/conversations/[id]/actions/route";
 import { POST as feedbackPOST } from "../app/api/relay/v1/feedback/route";
 import { POST as draftsPOST } from "../app/api/relay/v1/conversations/[id]/drafts/route";
@@ -248,6 +249,37 @@ describe.skipIf(!DATABASE_URL)("lead operations on Postgres", () => {
     const serviceKey = await mintApiKey("ws_a", "apollo-read", ["inbox:read"]);
     const wrong = await formPOST(req("POST", `http://localhost/api/forms/${serviceKey.secret}`, { email: "x@example.com" }), { params: Promise.resolve({ key: serviceKey.secret }) });
     expect(wrong.status).toBe(404);
+  });
+
+  it("takes Google Ads lead form webhooks: the key must be a form key, test leads are not stored, retries are stored once", async () => {
+    const formKey = await mintApiKey("ws_a", "google-ads", ["forms:submit"]);
+    const lead = (over: Record<string, unknown> = {}) => ({
+      lead_id: "TeSter-123", api_version: "1.0", form_id: 258365026599, campaign_id: 2211, gcl_id: "gclid-xyz", google_key: formKey.secret,
+      user_column_data: [
+        { column_id: "FULL_NAME", column_name: "Full Name", string_value: "Morgan Diaz" },
+        { column_id: "PHONE_NUMBER", column_name: "User Phone", string_value: "+14035550177" },
+        { column_id: "POSTAL_CODE", column_name: "Postal Code", string_value: "T2X 1A1" },
+        { column_id: "what_do_you_need", column_name: "What do you need?", string_value: "Furnace replacement" },
+      ],
+      ...over,
+    });
+    const url = "http://localhost/api/forms/google-ads";
+    const test = await googleAdsPOST(req("POST", url, lead({ is_test: true, lead_id: "test-only" })));
+    expect(test.status).toBe(200);
+    expect(await state.db.contactIdentity.count({ where: { value: { contains: "4035550177" } } })).toBe(0);
+    const ok = await googleAdsPOST(req("POST", url, lead()));
+    expect(ok.status).toBe(200);
+    expect((await googleAdsPOST(req("POST", url, lead()))).status).toBe(200);
+    const identity = await state.db.contactIdentity.findFirstOrThrow({ where: { value: { contains: "4035550177" } } });
+    const conversations = await state.db.conversation.findMany({ where: { contactId: identity.contactId }, include: { messages: true } });
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0]).toMatchObject({ channel: "WEB_FORM", subject: "Google Ads lead form" });
+    expect(conversations[0].messages).toHaveLength(1);
+    expect(conversations[0].messages[0].body).toContain("What do you need?: Furnace replacement");
+    expect(conversations[0].messages[0].body).toContain("Postal code: T2X 1A1");
+    const serviceKey = await mintApiKey("ws_a", "apollo-read-2", ["inbox:read"]);
+    expect((await googleAdsPOST(req("POST", url, lead({ google_key: serviceKey.secret, lead_id: "x" })))).status).toBe(401);
+    expect((await googleAdsPOST(req("POST", url, lead({ google_key: "wrong", lead_id: "y" })))).status).toBe(401);
   });
 
   // ── Sends: approval, duplicates, takeover ────────────────────────────────
