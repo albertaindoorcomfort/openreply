@@ -1,0 +1,363 @@
+// Meetings: Outlook calendar, Teams meeting metadata and AIC OS's meeting
+// assistant. Contacts, conversations, tasks and opportunities are canonical
+// in the lead model (Relay); meetings link to them by id and never copy them.
+//
+// workspaceId is a plain indexed column rather than a relation so this file
+// never edits the Workspace model owned by schema.prisma. Every query in
+// lib/meetings and lib/microsoft filters on it.
+
+/// One Microsoft 365 mailbox connected by one user of a workspace.
+model MicrosoftConnection {
+  id                 String                    @id @default(cuid())
+  workspaceId        String
+  userId             String
+  msTenantId         String
+  msUserId           String
+  email              String
+  displayName        String?
+  /// Scopes Microsoft actually granted, from the token response.
+  grantedScopes      String[]
+  accessTokenEnc     String
+  accessExpiresAt    DateTime
+  refreshTokenEnc    String
+  status             MicrosoftConnectionStatus @default(ACTIVE)
+  statusReason       String?
+  timezone           String                    @default("America/Edmonton")
+  /// Graph delta link for the calendarView sync window.
+  calendarDeltaLink  String?
+  calendarSyncedAt   DateTime?
+  /// Inbox delta link, kept only for the service mailbox that feeds the lead inbox.
+  mailDeltaLink      String?
+  mailSyncedAt       DateTime?
+  /// Mail received before this is never ingested (set when ingestion starts).
+  mailIngestFrom     DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  subscriptions GraphSubscription[]
+  meetings      Meeting[]
+  inboundMail   InboundMail[]
+
+  @@unique([workspaceId, userId])
+  @@unique([workspaceId, msTenantId, msUserId])
+  @@index([status])
+}
+
+enum MicrosoftConnectionStatus {
+  ACTIVE
+  NEEDS_REAUTH
+  DISCONNECTED
+}
+
+/// A Graph change-notification subscription and its renewal state.
+model GraphSubscription {
+  id                  String                  @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  graphSubscriptionId String                  @unique
+  resource            String
+  changeType          String
+  /// sha256 of the clientState secret sent to Graph; the secret is not stored.
+  clientStateHash     String
+  expiresAt           DateTime
+  status              GraphSubscriptionStatus @default(ACTIVE)
+  failureCount        Int                     @default(0)
+  lastError           String?
+  lastRenewedAt       DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  connection MicrosoftConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([status, expiresAt])
+}
+
+enum GraphSubscriptionStatus {
+  ACTIVE
+  RENEW_FAILED
+  REMOVED
+}
+
+/// One received change notification. dedupeKey makes Graph's retries and
+/// duplicate deliveries a no-op; failed rows are retried by the cron job.
+model GraphNotification {
+  id                  String                  @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  graphSubscriptionId String
+  dedupeKey           String                  @unique
+  changeType          String
+  resourceId          String?
+  lifecycleEvent      String?
+  status              GraphNotificationStatus @default(PENDING)
+  attempts            Int                     @default(0)
+  nextAttemptAt       DateTime                @default(now())
+  lastError           String?
+  receivedAt          DateTime                @default(now())
+  processedAt         DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([workspaceId])
+}
+
+enum GraphNotificationStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  DEAD
+}
+
+/// A calendar meeting. Mirrors one Outlook event (external ids kept) and
+/// links to lead-model records.
+model Meeting {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  connectionId      String
+  graphEventId      String?
+  iCalUId           String?
+  /// Graph changeKey of the last version seen; used to skip stale echoes.
+  changeKey         String?
+  title             String
+  startsAt          DateTime
+  endsAt            DateTime
+  timezone          String
+  location          String?
+  isOnline          Boolean       @default(false)
+  joinUrl           String?
+  onlineMeetingId   String?
+  organizerEmail    String?
+  attendees         Json          @default("[]")
+  status            MeetingStatus @default(SCHEDULED)
+  source            MeetingSource @default(OUTLOOK)
+  showAs            String?
+  contactId         String?
+  opportunityId     String?
+  conversationId    String?
+  campaignRef       String?
+  lastSyncedAt      DateTime?
+  version           Int           @default(1)
+  deletedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  connection MicrosoftConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  notes      MeetingNote[]
+  consents   MeetingConsent[]
+  briefs     MeetingBrief[]
+  summaries  MeetingSummary[]
+  followUps  MeetingFollowUp[]
+  events     MeetingEvent[]
+
+  @@unique([connectionId, graphEventId])
+  @@index([workspaceId, startsAt])
+  @@index([workspaceId, contactId])
+  @@index([workspaceId, opportunityId])
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum MeetingSource {
+  OUTLOOK
+  AIC
+}
+
+/// Notes on a meeting: typed by a person, imported from a Teams transcript
+/// (only with consent), or written by AIC OS.
+model MeetingNote {
+  id          String            @id @default(cuid())
+  workspaceId String
+  meetingId   String
+  kind        MeetingNoteKind
+  body        String
+  authorKind  String
+  authorId    String?
+  externalRef String?
+  /// Speaker-labelled segments when the source provides them.
+  segments    Json?
+  version     Int               @default(1)
+  deletedAt   DateTime?
+  purgeAfter  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, externalRef])
+  @@index([workspaceId])
+  @@index([purgeAfter])
+}
+
+enum MeetingNoteKind {
+  MANUAL
+  TRANSCRIPT
+}
+
+/// Consent to record or transcribe, per meeting. Notes from a recording or
+/// transcript are refused unless a GRANTED row exists for that kind.
+model MeetingConsent {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  meetingId        String
+  kind             MeetingConsentKind
+  status           MeetingConsentStatus
+  method           String
+  disclosureText   String
+  participants     String[]
+  capturedByUserId String
+  capturedAt       DateTime             @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, kind, capturedAt])
+}
+
+enum MeetingConsentKind {
+  RECORDING
+  TRANSCRIPTION
+}
+
+enum MeetingConsentStatus {
+  GRANTED
+  DECLINED
+  WITHDRAWN
+}
+
+/// AIC OS's prep brief before a meeting. Each one is kept.
+model MeetingBrief {
+  id          String   @id @default(cuid())
+  workspaceId String
+  meetingId   String
+  body        String
+  evidence    Json     @default("[]")
+  producer    String
+  createdAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt])
+}
+
+/// Summary, decisions and action items. The newest unsuperseded row is current;
+/// a person's correction supersedes it and is recorded as feedback.
+model MeetingSummary {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  meetingId    String
+  summary      String
+  decisions    Json      @default("[]")
+  actionItems  Json      @default("[]")
+  producer     String
+  confidence   Float?
+  authorKind   String
+  authorId     String?
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt])
+}
+
+/// A post-meeting follow-up. Never sent from here: it becomes a Relay draft
+/// (approval and send live there) or an Outlook draft the user sends.
+model MeetingFollowUp {
+  id             String               @id @default(cuid())
+  workspaceId    String
+  meetingId      String
+  to             String[]
+  subject        String
+  body           String
+  status         MeetingFollowUpStatus @default(PROPOSED)
+  relayDraftId   String?
+  outlookDraftId String?
+  idempotencyKey String               @unique
+  createdByKind  String
+  createdById    String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+enum MeetingFollowUpStatus {
+  PROPOSED
+  RELAY_DRAFT
+  OUTLOOK_DRAFT
+  DISCARDED
+}
+
+/// Append-only history for a meeting. Rows with relayType are also pushed to
+/// the Relay timeline by the outbox job (relayPushedAt set once accepted).
+model MeetingEvent {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  meetingId     String
+  type          String
+  actorKind     String
+  actorId       String?
+  payload       Json      @default("{}")
+  relayType     String?
+  relayPushedAt DateTime?
+  relayAttempts Int       @default(0)
+  relayError    String?
+  occurredAt    DateTime  @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, occurredAt])
+  @@index([relayType, relayPushedAt])
+}
+
+/// Per-workspace meeting settings.
+model MeetingSettings {
+  workspaceId             String   @id
+  transcriptRetentionDays Int      @default(365)
+  recordingDisclosure     String   @default("This meeting may be transcribed so we can keep accurate notes. Let us know if you would prefer it is not.")
+  businessHoursStart      Int      @default(8)
+  businessHoursEnd        Int      @default(17)
+  updatedAt               DateTime @updatedAt
+}
+
+/// One Inbox message of the service mailbox and what happened to it. The
+/// ledger makes webhook and delta deliveries of the same message one post to
+/// Relay, records why mail was skipped, and lets the cron job retry failures.
+/// Message content is not stored here; Relay keeps the canonical copy.
+model InboundMail {
+  id                  String            @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  /// Immutable Graph message id.
+  graphMessageId      String
+  internetMessageId   String?
+  receivedAt          DateTime?
+  status              InboundMailStatus @default(PENDING)
+  skipReason          String?
+  attempts            Int               @default(0)
+  nextAttemptAt       DateTime          @default(now())
+  lastError           String?
+  relayConversationId String?
+  relayMessageId      String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  connection MicrosoftConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, graphMessageId])
+  @@index([status, nextAttemptAt])
+  @@index([workspaceId])
+}
+
+enum InboundMailStatus {
+  PENDING
+  DELIVERED
+  SKIPPED
+  FAILED
+  DEAD
+}

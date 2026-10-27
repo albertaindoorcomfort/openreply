@@ -18,11 +18,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts          Account[]
-  sessions          Session[]
-  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers  WorkspaceMember[]
-  sentInvitations   WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
+  accounts         Account[]
+  sessions         Session[]
+  ownedWorkspaces  Workspace[]           @relation("WorkspaceOwner")
+  workspaceMembers WorkspaceMember[]
+  sentInvitations  WorkspaceInvitation[] @relation("WorkspaceInvitationsSent")
 }
 
 model Account {
@@ -86,6 +86,22 @@ model Workspace {
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
 
+  relayApiKeys        RelayApiKey[]
+  contacts            Contact[]
+  contactIdentities   ContactIdentity[]
+  consents            Consent[]
+  conversations       Conversation[]
+  messages            Message[]
+  drafts              Draft[]
+  tasks               Task[]
+  pipelines           Pipeline[]
+  opportunities       Opportunity[]
+  assessments         Assessment[]
+  feedback            Feedback[]
+  duplicateCandidates DuplicateCandidate[]
+  timelineEvents      TimelineEvent[]
+  knowledgeEntries    KnowledgeEntry[]
+
   @@index([ownerId])
 }
 
@@ -126,23 +142,23 @@ model WorkspaceInvitation {
 }
 
 model InstagramAccount {
-  id                String   @id @default(cuid())
+  id                String            @id @default(cuid())
   workspaceId       String
-  instagramId       String   @unique
+  instagramId       String            @unique
   username          String
   name              String?
   provider          InstagramProvider @default(META)
   zernioAccountId   String?
   accessToken       String
   tokenExpiresAt    DateTime?
-  webhookSubscribed Boolean  @default(false)
-  connectedAt       DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  webhookSubscribed Boolean           @default(false)
+  connectedAt       DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  automations Automation[]
-  dmLogs      DmLog[]
-  linkClicks  LinkClick[]
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  automations       Automation[]
+  dmLogs            DmLog[]
+  linkClicks        LinkClick[]
   followerSnapshots FollowerSnapshot[]
 
   @@index([workspaceId])
@@ -169,48 +185,51 @@ model FollowerSnapshot {
 }
 
 model Automation {
-  id                 String   @id @default(cuid())
+  id                 String @id @default(cuid())
   workspaceId        String
   instagramAccountId String
 
-  name           String
-  goal           String?
-  postId         String?
-  postUrl        String?
-  pendingNextReel Boolean @default(false)
-  matchAnyPost   Boolean @default(false)
-  keywords       String[]
-  matchAnyWord   Boolean @default(false)
+  name                    String
+  goal                    String?
+  postId                  String?
+  postUrl                 String?
+  pendingNextReel         Boolean  @default(false)
+  matchAnyPost            Boolean  @default(false)
+  keywords                String[]
+  matchAnyWord            Boolean  @default(false)
   // Also fire this campaign when someone sends a DM whose text matches the
   // keywords above. Independent of the post trigger — a DM has no media, so
   // postId / matchAnyPost do not apply to it.
-  dmTriggerEnabled Boolean @default(false)
-  dmMessage      String
-  openingDmEnabled     Boolean @default(false)
-  openingDmMessage     String?
-  openingDmButtonLabel String?
-  linkButtonLabel      String?
-  requireFollow           Boolean @default(false)
+  dmTriggerEnabled        Boolean  @default(false)
+  dmMessage               String
+  openingDmEnabled        Boolean  @default(false)
+  openingDmMessage        String?
+  openingDmButtonLabel    String?
+  linkButtonLabel         String?
+  requireFollow           Boolean  @default(false)
   followPromptMessage     String?
   followPromptButtonLabel String?
-  followUpEnabled Boolean @default(false)
-  followUpMessage String?
+  followUpEnabled         Boolean  @default(false)
+  followUpMessage         String?
   // Minutes to wait after the link is delivered before sending the follow-up.
   // 0 sends it right away.
-  followUpDelayMinutes Int @default(0)
-  publicReplyEnabled Boolean @default(false)
-  publicReplyMessage String?
-  publicReplyMessages String[] @default([])
-  isActive       Boolean @default(true)
-  wholeWordMatch Boolean @default(true)
+  followUpDelayMinutes    Int      @default(0)
+  publicReplyEnabled      Boolean  @default(false)
+  publicReplyMessage      String?
+  publicReplyMessages     String[] @default([])
+  isActive                Boolean  @default(true)
+  wholeWordMatch          Boolean  @default(true)
   // Intent gate: when on, a comment must also *mean* what the campaign offers
   // (judged by TypeSafe) before any DM is sent. Off by default, so every
   // existing campaign behaves exactly as before.
   intentGateEnabled Boolean @default(false)
   intentDescription String?
   intentThreshold   Float   @default(0.7)
-  reportShareSlug    String? @unique
-  reportShareEnabled Boolean @default(true)
+  reportShareSlug         String?  @unique
+  reportShareEnabled      Boolean  @default(true)
+  // The Apollo approval that created this flow through the service API. Unique,
+  // so one approval creates one flow. Null for flows made in the dashboard.
+  approvalId              String?  @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -227,31 +246,31 @@ model Automation {
 }
 
 model DmLog {
-  id                 String     @id @default(cuid())
+  id                 String @id @default(cuid())
   workspaceId        String
   automationId       String
   instagramAccountId String
 
-  commenterId   String
-  commenterName String?
-  commentText   String
-  commentId     String
+  commenterId    String
+  commenterName  String?
+  commentText    String
+  commentId      String
   matchedKeyword String?
   // Probability the intent gate returned for this comment, when a gate ran.
   // Null on every keyword-only row, so gated rows are identifiable.
   intentProbability Float?
-  status        DmStatus @default(PENDING)
-  attempts      Int      @default(0)
-  dmSentAt      DateTime?
-  errorMessage  String?
+  status         DmStatus  @default(PENDING)
+  attempts       Int       @default(0)
+  dmSentAt       DateTime?
+  errorMessage   String?
 
   // The public comment reply is delivered independently of the DM, so its
   // outcome is tracked separately. publicReplySentAt makes it idempotent across
   // retries; a DM failure never blocks or re-posts the public reply.
-  dmDeliveryUnconfirmed Boolean @default(false)
-  publicReplyDeliveryUnconfirmed Boolean @default(false)
-  publicReplySentAt DateTime?
-  publicReplyError  String?
+  dmDeliveryUnconfirmed          Boolean   @default(false)
+  publicReplyDeliveryUnconfirmed Boolean   @default(false)
+  publicReplySentAt              DateTime?
+  publicReplyError               String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -328,14 +347,14 @@ model LinkClick {
 }
 
 model WebhookEvent {
-  id          String        @id @default(cuid())
-  workspaceId String?
-  object      String?
-  payload     Json
-  status      WebhookStatus @default(PENDING)
+  id           String        @id @default(cuid())
+  workspaceId  String?
+  object       String?
+  payload      Json
+  status       WebhookStatus @default(PENDING)
   errorMessage String?
-  createdAt   DateTime      @default(now())
-  processedAt DateTime?
+  createdAt    DateTime      @default(now())
+  processedAt  DateTime?
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
@@ -344,13 +363,13 @@ model WebhookEvent {
 }
 
 model OperationalEvent {
-  id          String                @id @default(cuid())
+  id          String                 @id @default(cuid())
   workspaceId String?
   source      OperationalEventSource
-  level       OperationalEventLevel @default(INFO)
+  level       OperationalEventLevel  @default(INFO)
   message     String
   payload     Json?
-  createdAt   DateTime              @default(now())
+  createdAt   DateTime               @default(now())
   resolvedAt  DateTime?
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
@@ -403,25 +422,540 @@ enum OperationalEventLevel {
   ERROR
 }
 
-
 enum InstagramProvider {
   META
   ZERNIO
 }
 
 model ZernioConnection {
-  workspaceId    String @id
-  apiKey         String
-  profileId      String?
-  webhookId      String?
-  webhookSecret  String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String    @id
+  apiKey        String
+  profileId     String?
+  webhookId     String?
+  webhookSecret String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 // Claims persist independently of BullMQ retention so old taps never resend.
 model PostbackDelivery {
-  id String @id
+  id        String   @id
   createdAt DateTime @default(now())
+}
+
+// ── Lead operations ─────────────────────────────────────────────────────────
+// The canonical record for contacts, conversations, tasks and opportunities,
+// across every channel. Contract: docs/lead-model.md. Every change writes a
+// TimelineEvent in the same transaction.
+
+/// A workspace-scoped service key for adapters and the agent control plane.
+/// Only the SHA-256 of the secret is stored.
+model RelayApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  keyPrefix   String    @unique
+  keyHash     String    @unique
+  scopes      String[]
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model Contact {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  displayName  String
+  firstName    String?
+  lastName     String?
+  company      String?
+  primaryEmail String?
+  primaryPhone String?
+  ownerUserId  String?
+  stageKey     String    @default("new")
+  leadScore    Int?
+  source       String?
+  sourceDetail String?
+  campaignRef  String?
+  mergedIntoId String?
+  deletedAt    DateTime?
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace     Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  identities    ContactIdentity[]
+  consents      Consent[]
+  conversations Conversation[]
+  tasks         Task[]
+  opportunities Opportunity[]
+
+  @@index([workspaceId, stageKey])
+  @@index([workspaceId, updatedAt])
+}
+
+model ContactIdentity {
+  id          String       @id @default(cuid())
+  workspaceId String
+  contactId   String
+  kind        IdentityKind
+  /// Normalised: emails lower-cased, phones E.164.
+  value       String
+  verified    Boolean      @default(false)
+  source      String?
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, kind, value])
+  @@index([contactId])
+}
+
+model Consent {
+  id          String         @id @default(cuid())
+  workspaceId String
+  contactId   String
+  channel     ConsentChannel
+  basis       ConsentBasis
+  status      ConsentStatus  @default(GRANTED)
+  source      String
+  evidence    String?
+  capturedAt  DateTime       @default(now())
+  expiresAt   DateTime?
+  withdrawnAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, channel, capturedAt])
+}
+
+model Conversation {
+  id                String             @id @default(cuid())
+  workspaceId       String
+  contactId         String
+  channel           Channel
+  /// The AIC-side account the thread belongs to: a mailbox, an Instagram account id, a phone number.
+  channelAccountRef String
+  externalThreadId  String
+  subject           String?
+  status            ConversationStatus @default(OPEN)
+  mode              AutomationMode     @default(SUPERVISED)
+  ownerUserId       String?
+  assignedAgentId   String?            @default("carla")
+  lockUserId        String?
+  lockExpiresAt     DateTime?
+  lastInboundAt     DateTime?
+  lastOutboundAt    DateTime?
+  replyWindowEndsAt DateTime?
+  unreadCount       Int                @default(0)
+  version           Int                @default(1)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  drafts    Draft[]
+  tasks     Task[]
+
+  @@unique([workspaceId, channel, externalThreadId])
+  @@index([workspaceId, status, updatedAt])
+  @@index([contactId])
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  workspaceId       String
+  conversationId    String
+  contactId         String
+  direction         MessageDirection
+  kind              MessageKind      @default(MESSAGE)
+  authorKind        ActorKind
+  authorId          String?
+  body              String
+  attachments       Json?
+  externalMessageId String?
+  occurredAt        DateTime         @default(now())
+  deliveryStatus    String?
+  createdAt         DateTime         @default(now())
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalMessageId])
+  @@index([conversationId, occurredAt])
+}
+
+model Draft {
+  id               String      @id @default(cuid())
+  workspaceId      String
+  conversationId   String
+  body             String
+  /// SHA-256 of body. A send grant names it, so an edited draft needs a new approval.
+  bodySha256       String
+  authorKind       ActorKind
+  authorId         String
+  rationale        String?
+  evidence         Json?
+  confidence       Float?
+  /// The newest message the author had seen. Anything newer makes the draft stale.
+  basedOnMessageId String?
+  status           DraftStatus @default(PROPOSED)
+  externalTaskId   String?
+  approvalId       String?     @unique
+  idempotencyKey   String?     @unique
+  approvedBy       String?
+  sentMessageId    String?
+  errorMessage     String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+}
+
+model Task {
+  id              String       @id @default(cuid())
+  workspaceId     String
+  title           String
+  notes           String?
+  dueAt           DateTime?
+  remindAt        DateTime?
+  status          TaskStatus   @default(OPEN)
+  priority        TaskPriority @default(NORMAL)
+  contactId       String?
+  conversationId  String?
+  opportunityId   String?
+  assigneeUserId  String?
+  assigneeAgentId String?
+  createdByKind   ActorKind
+  createdById     String?
+  completedAt     DateTime?
+  deletedAt       DateTime?
+  version         Int          @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  opportunity  Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, dueAt])
+  @@index([assigneeUserId, status])
+}
+
+model Pipeline {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stages        PipelineStage[]
+  opportunities Opportunity[]
+
+  @@index([workspaceId])
+}
+
+model PipelineStage {
+  id         String    @id @default(cuid())
+  pipelineId String
+  key        String
+  name       String
+  position   Int
+  kind       StageKind @default(OPEN)
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@unique([pipelineId, key])
+}
+
+model Opportunity {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  contactId       String
+  pipelineId      String
+  stageKey        String
+  title           String
+  valueCents      Int?
+  currency        String             @default("CAD")
+  ownerUserId     String?
+  expectedCloseAt DateTime?
+  outcome         OpportunityOutcome @default(OPEN)
+  lostReason      String?
+  campaignRef     String?
+  closedAt        DateTime?
+  deletedAt       DateTime?
+  version         Int                @default(1)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  pipeline  Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Restrict)
+  tasks     Task[]
+
+  @@index([workspaceId, stageKey])
+  @@index([contactId])
+}
+
+/// AIC OS's classify, summarise and next-action output for a conversation.
+model Assessment {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  contactId      String
+  intent         String
+  urgency        Urgency
+  sentiment      String?
+  leadScore      Int?
+  summary        String
+  nextActions    Json
+  evidence       Json?
+  /// What produced it, for example "rules-v1" or a model id.
+  producer       String
+  confidence     Float?
+  supersededAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+/// A human correction of something AIC OS produced. Evaluation input only.
+model Feedback {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  targetKind     FeedbackTarget
+  targetId       String
+  original       Json?
+  corrected      Json
+  reason         String?
+  userId         String
+  conversationId String?
+  status         FeedbackStatus @default(NEW)
+  // Set when another module forwards a correction, so a retry stores it once.
+  idempotencyKey String?
+  createdAt      DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status])
+  @@index([targetKind, targetId])
+}
+
+model DuplicateCandidate {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  contactId      String
+  otherContactId String
+  reason         String
+  score          Float
+  status         DuplicateStatus @default(OPEN)
+  resolvedBy     String?
+  createdAt      DateTime        @default(now())
+  resolvedAt     DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, contactId, otherContactId])
+  @@index([workspaceId, status])
+}
+
+/// Approved business facts AIC OS may use in replies (hours, booking, service area).
+/// AIC OS never states a business fact that is not here.
+model KnowledgeEntry {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  key              String
+  title            String
+  body             String
+  active           Boolean  @default(true)
+  approvedByUserId String?
+  version          Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
+}
+
+/// Append-only history of every change. Also the audit trail for the inbox.
+model TimelineEvent {
+  id             String    @id @default(cuid())
+  /// Monotonic cursor for the /changes feed.
+  seq            BigInt    @default(autoincrement())
+  workspaceId    String
+  type           String
+  actorKind      ActorKind
+  actorId        String?
+  contactId      String?
+  conversationId String?
+  opportunityId  String?
+  taskId         String?
+  payload        Json?
+  /// Set by adapters that may retry a write. Unique per workspace.
+  idempotencyKey String?
+  occurredAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([seq])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, seq])
+  @@index([contactId, occurredAt])
+  @@index([conversationId, occurredAt])
+}
+
+enum IdentityKind {
+  EMAIL
+  PHONE
+  INSTAGRAM
+  MESSENGER
+  WEB_VISITOR
+  EXTERNAL
+}
+
+enum ConsentChannel {
+  EMAIL
+  SMS
+  CALL
+  DM
+}
+
+enum ConsentBasis {
+  EXPRESS
+  IMPLIED
+}
+
+enum ConsentStatus {
+  GRANTED
+  WITHDRAWN
+}
+
+enum Channel {
+  WEB_FORM
+  EMAIL
+  INSTAGRAM
+  MESSENGER
+  SMS
+  CALL
+  VOICEMAIL
+  CHAT
+}
+
+enum ConversationStatus {
+  OPEN
+  SNOOZED
+  CLOSED
+}
+
+enum AutomationMode {
+  MANUAL_ONLY
+  SUPERVISED
+  HUMAN
+  AUTONOMOUS
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum MessageKind {
+  MESSAGE
+  NOTE
+  COACHING
+  TRANSCRIPT
+  VOICEMAIL
+  SYSTEM
+}
+
+enum ActorKind {
+  CONTACT
+  USER
+  AGENT
+  SYSTEM
+  SERVICE
+}
+
+enum DraftStatus {
+  PROPOSED
+  SENDING
+  SENT
+  FAILED
+  SEND_UNCONFIRMED
+  DISCARDED
+  STALE
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum StageKind {
+  OPEN
+  WON
+  LOST
+}
+
+enum OpportunityOutcome {
+  OPEN
+  WON
+  LOST
+}
+
+enum Urgency {
+  LOW
+  NORMAL
+  HIGH
+  EMERGENCY
+}
+
+enum FeedbackTarget {
+  ASSESSMENT
+  DRAFT
+  RECOMMENDATION
+  SUMMARY
+  ROUTING
+  MEETING_NOTE
+}
+
+enum FeedbackStatus {
+  NEW
+  TRIAGED
+  IN_EVAL
+  ADOPTED
+  REJECTED
+}
+
+enum DuplicateStatus {
+  OPEN
+  MERGED
+  DISMISSED
 }
