@@ -6,7 +6,9 @@
 
 export type Attachment = { name: string; url: string; contentType?: string };
 
-const ALLOWED_HOST = (host: string) => host === "vapi.ai" || host.endsWith(".vapi.ai");
+// The voice provider stores recordings on its own Cloudflare R2 account; only that host, not R2 in general.
+const VAPI_R2_HOST = "94bdb67bb98da30b06bdd917725c037d.r2.cloudflarestorage.com";
+const ALLOWED_HOST = (host: string) => host === "vapi.ai" || host.endsWith(".vapi.ai") || host === VAPI_R2_HOST;
 
 export function playableUrl(url: string): string | null {
   try {
