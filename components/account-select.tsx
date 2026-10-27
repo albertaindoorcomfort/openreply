@@ -1,6 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n/provider";
+import { socialPlatformLabel } from "@/lib/social-platform-label";
 
 
 export interface AccountOption {
@@ -8,6 +9,7 @@ export interface AccountOption {
   username: string;
   instagramId: string;
   name?: string | null;
+  platform?: string | null;
 }
 
 interface AccountSelectProps {
@@ -39,7 +41,7 @@ export default function AccountSelect({
         {includeAll && <option value="all">{t("All accounts")}</option>}
         {accounts.map((account) => (
           <option key={account.id} value={account.id}>
-            @{account.username}
+            @{account.username} · {socialPlatformLabel(account.platform)}
           </option>
         ))}
       </select>

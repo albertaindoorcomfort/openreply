@@ -1,13 +1,15 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { parseCommentEvents } from '@/lib/meta/webhook';
+import type { SocialPlatform } from '@/app/generated/prisma/client';
+import { ZERNIO_PLATFORMS, ZERNIO_PLATFORM_NAMES } from './platforms';
 
 type InstagramPayload = Parameters<typeof parseCommentEvents>[0];
 
 const envelopeSchema = z.object({
   id: z.string().min(1),
   event: z.string(),
-  account: z.object({ id: z.string(), platform: z.literal('instagram') }),
+  account: z.object({ id: z.string(), platform: z.enum(ZERNIO_PLATFORM_NAMES) }),
   comment: z.object({
     id: z.string().min(1), platformPostId: z.string().min(1), text: z.string(),
     author: z.object({ id: z.string().min(1), username: z.string().optional() }),
@@ -30,10 +32,13 @@ export function verifyZernioSignature({ rawBody, signature, secret }: {
 }
 
 export function normalizeZernioEvent({ payload, account }: {
-  payload: unknown; account: { zernioAccountId: string | null; instagramId: string };
+  payload: unknown; account: { zernioAccountId: string | null; instagramId: string; platform?: SocialPlatform };
 }): InstagramPayload | null {
   const parsed = envelopeSchema.safeParse(payload);
   if (!parsed.success || parsed.data.account.id !== account.zernioAccountId) return null;
+  // The engine's internal event shape is the Instagram webhook shape for every
+  // platform; the account row, not this object, says which network it is.
+  if (ZERNIO_PLATFORMS[parsed.data.account.platform] !== (account.platform ?? 'INSTAGRAM')) return null;
   const { event, comment, message, metadata, conversation, statusAt } = parsed.data;
   const entry: InstagramPayload['entry'][number] = { id: account.instagramId, time: Date.now() };
   if (event === 'comment.received' && comment) {

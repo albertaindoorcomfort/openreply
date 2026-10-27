@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { zernioRequest } from './client';
+import { ZERNIO_PLATFORMS, ZERNIO_PLATFORM_NAMES, type ZernioPlatform } from './platforms';
 
 const profilesSchema = z.object({ profiles: z.array(z.object({ _id: z.string(), name: z.string() })) });
 const accountsSchema = z.object({ accounts: z.array(z.object({
@@ -14,10 +15,22 @@ export async function listProfiles(apiKey: string) {
   return data.profiles.map(p => ({ id: p._id, name: p.name }));
 }
 
-export async function listInstagramAccounts({ apiKey, profileId }: { apiKey: string; profileId: string }) {
-  const data = accountsSchema.parse(await zernioRequest({ apiKey, path: `/accounts?profileId=${encodeURIComponent(profileId)}&platform=instagram` }));
-  return data.accounts.filter(a => a.platform === 'instagram' && a.isActive !== false && a.platformUserId && (typeof a.profileId === 'string' ? a.profileId : a.profileId._id) === profileId)
+async function listPlatformAccounts({ apiKey, profileId, platform }: { apiKey: string; profileId: string; platform: ZernioPlatform }) {
+  const data = accountsSchema.parse(await zernioRequest({ apiKey, path: `/accounts?profileId=${encodeURIComponent(profileId)}&platform=${platform}` }));
+  return data.accounts.filter(a => a.platform === platform && a.isActive !== false && a.platformUserId && (typeof a.profileId === 'string' ? a.profileId : a.profileId._id) === profileId)
     .map(a => ({ id: a._id, instagramId: a.platformUserId!, username: a.username, name: a.displayName ?? null }));
+}
+
+export async function listInstagramAccounts({ apiKey, profileId }: { apiKey: string; profileId: string }) {
+  return listPlatformAccounts({ apiKey, profileId, platform: 'instagram' });
+}
+
+// Every account in the profile that Relay can run DM flows on, with its platform.
+// `instagramId` holds the platform's own user or page id on every network.
+export async function listZernioAccounts({ apiKey, profileId }: { apiKey: string; profileId: string }) {
+  const lists = await Promise.all(ZERNIO_PLATFORM_NAMES.map(async platform =>
+    (await listPlatformAccounts({ apiKey, profileId, platform })).map(a => ({ ...a, platform: ZERNIO_PLATFORMS[platform] }))));
+  return lists.flat();
 }
 
 export async function listWebhooks(apiKey: string) {

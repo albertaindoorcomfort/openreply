@@ -13,7 +13,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
   if (incoming.object !== 'instagram' || !Array.isArray(incoming.entry)) return;
   const accounts = await prisma.instagramAccount.findMany({
     where: { instagramId: { in: incoming.entry.map(e => e.id) }, provider, ...(workspaceId ? { workspaceId } : {}) },
-    select: { id: true, instagramId: true, workspaceId: true },
+    select: { id: true, instagramId: true, workspaceId: true, platform: true },
   });
   const accountMap = new Map(accounts.map(a => [a.instagramId, a]));
   const allowed = new Set(accountMap.keys());
@@ -101,7 +101,9 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
 
-      await bridgeInstagramDm({
+      // The lead inbox bridge is Instagram only; other platforms run the
+      // keyword automations without copying into it.
+      if (account.platform === 'INSTAGRAM') await bridgeInstagramDm({
         workspaceId: account.workspaceId,
         instagramAccountId: event.instagramAccountId,
         senderId: event.senderId,

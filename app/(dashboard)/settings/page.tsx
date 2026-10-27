@@ -2,6 +2,7 @@
 
 import LanguageSwitcher from "@/components/language-switcher";
 import { useI18n } from "@/lib/i18n/provider";
+import { socialPlatformLabel } from "@/lib/social-platform-label";
 import { Suspense, useEffect, useState } from "react";
 import type { AccountOption } from "@/components/account-select";
 import { ZernioConnection } from "@/components/zernio-connection";
@@ -196,7 +197,10 @@ export default function SettingsPage() {
               >
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    @{account.username}
+                    @{account.username}{" "}
+                    <span className="text-xs font-normal text-muted">
+                      {socialPlatformLabel(account.platform)}
+                    </span>
                   </p>
                   <p className="mt-1 text-xs text-muted">
                     {account.provider === "ZERNIO" ? t("Connected via Zernio") : <>{t("Token expires")}{" "}

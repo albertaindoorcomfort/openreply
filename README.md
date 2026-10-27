@@ -93,6 +93,16 @@ Two processes, always. `npm run dev` serves the app and receives webhooks. `npm 
 
 Full environment variables and the production layout are in [docs/setup.md](docs/setup.md).
 
+### Environment flags
+
+| Variable | Default | Effect |
+|---|---|---|
+| `RELAY_ACCEPT_CALL_INGEST` | `on` | Set to `off` when Reach's call store takes over call records. The lead ingest path (`POST /api/relay/v1/events` and every other caller of `lib/leads/ingest.ts`) then refuses new `CALL` and `VOICEMAIL` channel events and `TRANSCRIPT` messages with HTTP 410 and error code `CALLS_MOVED`. Calls already stored stay as they are. SMS, email, forms and social DMs are not affected. |
+
+### Platforms
+
+Direct Meta connections are Instagram only. Through Zernio, Relay runs comment-to-DM and DM keyword flows on Instagram and Facebook Pages. Each connected account shows its platform on the Settings and Campaigns screens. Other networks are left out until Zernio supports private replies to comments and postback buttons on them; see [docs/zernio.md](docs/zernio.md).
+
 ## Set it up with your AI assistant
 
 If you use Claude Code, Cursor, or a similar tool, an assistant can walk you through either connection path. There is a ready-made prompt in the [Set it up with an AI assistant](docs/setup.md#set-it-up-with-an-ai-assistant) section of the setup guide. Paste it into your assistant inside a clone of this repo, choose your provider before configuring any Meta secrets, and it will walk you through connecting Instagram and going live.

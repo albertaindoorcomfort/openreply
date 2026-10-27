@@ -55,3 +55,15 @@ Sponsorship appears only in OpenReply’s project and interface surfaces. OpenRe
 If Zernio times out or returns an ambiguous send response, OpenReply marks the delivery unconfirmed and avoids automatically sending it again. Inspect the Instagram inbox before retrying manually. Public replies and private DMs track their outcomes independently. Durable postback receipts distinguish a replayed event from a new button tap, including after queue history expires; these receipts also survive a worker restart during delivery.
 
 Deploy the database migrations (`npm run db:migrate`) before starting the updated web app and worker. The integration adds provider/connection storage, independent delivery-uncertainty flags, and durable postback receipts. Existing Instagram accounts default to the direct Meta provider.
+
+## Platforms
+
+Relay runs its flows on **Instagram** and **Facebook Pages** through Zernio. Select a Facebook Page from the account list in Settings the same way as an Instagram account; connect the Page in Zernio first. Each account keeps its platform, and events for one platform never reach an account on another.
+
+Other networks are not offered, because the flows need things Zernio provides only for Instagram and Facebook:
+
+- Private replies to comments (comment-to-DM) are Instagram and Facebook only. Threads, YouTube, LinkedIn, Bluesky, Reddit and TikTok deliver comment events but cannot DM the commenter.
+- URL buttons and postback button taps (`postbackPayload`) are Instagram and Facebook only. WhatsApp, Telegram, X, Bluesky, Reddit and TikTok DMs would need text-only flows and their own tap formats.
+- On those DM networks the conversation id is not the sender id, so replies need the conversation id carried through the engine.
+
+The follow gate reads Instagram's follow status. On a Facebook Page it cannot confirm a follow, so a campaign with the gate sends the link without the prompt.
