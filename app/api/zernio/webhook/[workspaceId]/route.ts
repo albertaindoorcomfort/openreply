@@ -4,8 +4,9 @@ import { prisma } from '@/lib/db/client';
 import { decryptToken } from '@/lib/meta/oauth';
 import { normalizeZernioEvent, verifyZernioSignature } from '@/lib/zernio/normalize-event';
 import { processInstagramWebhook } from '@/lib/queue/process-webhook';
+import { ZERNIO_PLATFORMS, ZERNIO_PLATFORM_NAMES } from '@/lib/zernio/platforms';
 
-const eventEnvelopeSchema = z.object({ account: z.object({ id: z.string().min(1), platform: z.literal('instagram') }) });
+const eventEnvelopeSchema = z.object({ account: z.object({ id: z.string().min(1), platform: z.enum(ZERNIO_PLATFORM_NAMES) }) });
 
 export async function POST(request: Request, segmentData: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await segmentData.params;
@@ -20,7 +21,7 @@ export async function POST(request: Request, segmentData: { params: Promise<{ wo
   const parsed = eventEnvelopeSchema.safeParse(payload);
   if (!parsed.success) return NextResponse.json({ success: true, ignored: true });
   // Zernio subscriptions are account-wide. Drop other profiles before persisting any payload.
-  const account = await prisma.instagramAccount.findFirst({ where: { workspaceId, provider: 'ZERNIO', zernioAccountId: parsed.data.account.id } });
+  const account = await prisma.instagramAccount.findFirst({ where: { workspaceId, provider: 'ZERNIO', zernioAccountId: parsed.data.account.id, platform: ZERNIO_PLATFORMS[parsed.data.account.platform] } });
   if (!account) return NextResponse.json({ success: true, ignored: true });
   const normalized = normalizeZernioEvent({ payload, account });
   if (!normalized) return NextResponse.json({ success: true, ignored: true });

@@ -7,6 +7,7 @@ import { recordConsentTx, ConsentInputSchema, consentChannelFor } from "./consen
 
 const OPT_OUT = /^\s*(stop|stop all|unsubscribe|opt[ -]?out|cancel|end|quit)\s*[.!]?\s*$/i;
 import { ensureDefaultPipeline } from "./pipeline";
+import { LeadError } from "./errors";
 
 const IDENTITY_KINDS = ["EMAIL", "PHONE", "INSTAGRAM", "MESSENGER", "WEB_VISITOR", "EXTERNAL"] as const;
 const CHANNELS = ["WEB_FORM", "EMAIL", "INSTAGRAM", "MESSENGER", "SMS", "CALL", "VOICEMAIL", "CHAT"] as const;
@@ -80,6 +81,7 @@ async function liveContactId(tx: Tx, contactId: string): Promise<string> {
  */
 export async function ingestInbound(actor: Actor, input: InboundEvent): Promise<IngestResult> {
   const event = InboundEventSchema.parse(input);
+  assertCallIntakeOpen(event);
   const identities = dedupeIdentities(event.from.identities);
   if (identities.length === 0) throw new Error("INVALID_IDENTITIES");
   const pipeline = await ensureDefaultPipeline(actor.workspaceId);
@@ -108,6 +110,19 @@ export async function ingestInbound(actor: Actor, input: InboundEvent): Promise<
     // (for example the same message id on a new thread). Re-running finds it.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return run();
     throw err;
+  }
+}
+
+/**
+ * Call records move to Reach's call store. RELAY_ACCEPT_CALL_INGEST=off refuses
+ * new CALL and VOICEMAIL channel events and TRANSCRIPT messages; unset or "on"
+ * keeps accepting them. Stored calls are never touched. SMS and social DMs
+ * are not affected.
+ */
+export function assertCallIntakeOpen(event: Pick<InboundEvent, "channel" | "kind">) {
+  if (process.env.RELAY_ACCEPT_CALL_INGEST?.trim().toLowerCase() !== "off") return;
+  if (event.channel === "CALL" || event.channel === "VOICEMAIL" || event.kind === "TRANSCRIPT") {
+    throw new LeadError("CALLS_MOVED", 410, "Calls, voicemails and transcripts are no longer stored here. Send them to Reach's call store.");
   }
 }
 

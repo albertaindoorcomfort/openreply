@@ -6,7 +6,7 @@ import { getBaseUrl } from '@/lib/env';
 import { decryptToken, encryptToken } from '@/lib/meta/oauth';
 import { zernioRequest } from '@/lib/zernio/client';
 import { withConnectionLock } from '@/lib/zernio/lock-connection';
-import { ensureWebhook, listInstagramAccounts, listProfiles, listWebhooks } from '@/lib/zernio/manage-remote';
+import { ensureWebhook, listZernioAccounts, listProfiles, listWebhooks } from '@/lib/zernio/manage-remote';
 import { ConnectionError, readBody, withZernioManagement } from '@/lib/zernio/route-handler';
 
 const keyBodySchema = z.object({ apiKey: z.string().trim().min(10).max(512) });
@@ -17,7 +17,7 @@ export const GET = withZernioManagement(async ({ workspaceId }) => {
   if (!saved) return NextResponse.json({ success: true, data: { configured: false, profiles: [], accounts: [] } });
   const apiKey = decryptToken(saved.apiKey);
   const [profiles, accounts] = await Promise.all([
-    listProfiles(apiKey), saved.profileId ? listInstagramAccounts({ apiKey, profileId: saved.profileId }) : [],
+    listProfiles(apiKey), saved.profileId ? listZernioAccounts({ apiKey, profileId: saved.profileId }) : [],
   ]);
   const connected = await prisma.instagramAccount.findMany({ where: { workspaceId, provider: 'ZERNIO' }, select: { zernioAccountId: true } });
   const connectedIds = new Set(connected.map(a => a.zernioAccountId));

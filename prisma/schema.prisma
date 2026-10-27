@@ -148,6 +148,9 @@ model InstagramAccount {
   username          String
   name              String?
   provider          InstagramProvider @default(META)
+  // The social network this connection belongs to. META accounts are always
+  // INSTAGRAM; other platforms connect through Zernio only.
+  platform          SocialPlatform    @default(INSTAGRAM)
   zernioAccountId   String?
   accessToken       String
   tokenExpiresAt    DateTime?
@@ -420,6 +423,11 @@ enum OperationalEventLevel {
   INFO
   WARNING
   ERROR
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
 }
 
 enum InstagramProvider {

@@ -17,6 +17,7 @@ export type ProviderAccount = {
   zernioAccountId: string | null;
   instagramId: string;
   accessToken: string;
+  platform?: "INSTAGRAM" | "FACEBOOK";
 };
 
 export function hasInstagramCredentials(
@@ -31,6 +32,10 @@ export async function createInstagramContext(
   account: ProviderAccount,
   operationId?: string
 ): Promise<InstagramContext> {
+  // Only Instagram connects through Meta directly; every other platform sends
+  // through Zernio.
+  if (account.provider !== "ZERNIO" && account.platform && account.platform !== "INSTAGRAM")
+    throw new Error("Only Instagram accounts can use a direct Meta connection");
   if (account.provider !== "ZERNIO")
     return { provider: "META", accessToken: decryptToken(account.accessToken) };
   if (!account.zernioAccountId)
